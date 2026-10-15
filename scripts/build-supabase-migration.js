@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS allbot.query_templates (key TEXT PRIMARY KEY, stateme
 REVOKE ALL ON SCHEMA allbot FROM anon, authenticated;
 REVOKE ALL ON ALL TABLES IN SCHEMA allbot FROM anon, authenticated;
 CREATE OR REPLACE FUNCTION public.allbot_execute(query_key TEXT, params JSONB DEFAULT '[]'::JSONB)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, allbot AS $function$
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, allbot AS $function$
 DECLARE template allbot.query_templates%ROWTYPE; statement TEXT; result JSONB; idx INTEGER; pieces TEXT[];
 BEGIN
   SELECT * INTO template FROM allbot.query_templates WHERE key=query_key;
@@ -36,6 +36,10 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.allbot_execute(TEXT,JSONB) FROM PUBLIC, anon, authenticated;
+GRANT USAGE ON SCHEMA allbot TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA allbot TO service_role;
+REVOKE INSERT, UPDATE, DELETE ON allbot.query_templates FROM service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA allbot TO service_role;
 GRANT EXECUTE ON FUNCTION public.allbot_execute(TEXT,JSONB) TO service_role;
 `;
 // Only these reviewed application statements are callable; clients cannot submit SQL.
