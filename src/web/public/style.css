@@ -133,3 +133,5 @@ body{background-size:cover;background-position:center;background-attachment:fixe
 .personal-access{min-height:100dvh}.personal-access>.card{width:min(520px,94vw);padding:32px}.personal-access form{display:grid;gap:14px;margin:20px 0}.personal-access input{width:100%;min-height:44px}.personal-access button{margin:6px 0}.invitation-code{display:block;padding:18px;font-size:22px;letter-spacing:.1em;background:var(--bg);border-radius:10px;overflow-wrap:anywhere}
 
 .access-denied{width:min(960px,95vw);max-width:960px;text-align:center;overflow:hidden;padding:0 0 24px}.access-denied-image{width:100%;height:auto;display:block}.access-denied h2{padding:0 20px}.access-denied .btn{margin-top:12px}
+
+.work-board.free-column-layout{position:relative;display:block;overflow:auto;isolation:isolate}.free-column-layout>.work-lane{position:absolute;margin:0}.free-column-layout>.work-lane h3{touch-action:none;user-select:none;cursor:move}.free-column-layout>.work-lane.layout-locked h3{cursor:default}.free-column-layout>.lane-moving{z-index:20;box-shadow:0 12px 35px #0008}.free-column-layout>.work-lane h3:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
