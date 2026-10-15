@@ -17,7 +17,7 @@ const { parseDuration } = require('../util');
 const {isManager}=require('../access');
 const API = 'https://discord.com/api/v10';
 
-function startWeb(client, { databaseReady = true, listen = true } = {}) {
+function startWeb(client, { databaseReady = true, databaseError = '', listen = true } = {}) {
   const app = express();
   const BASE = (process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
   const REDIRECT = `${BASE}/auth/callback`;
@@ -121,6 +121,14 @@ function startWeb(client, { databaseReady = true, listen = true } = {}) {
     databaseReady, botReady: client.isReady(),
     loginReady: databaseReady && !!process.env.DISCORD_CLIENT_ID && !!process.env.DISCORD_CLIENT_SECRET,
     callbackUrl: REDIRECT,
+    databaseError,
+    credentials: {
+      discordToken: !!process.env.DISCORD_TOKEN,
+      discordClientId: !!process.env.DISCORD_CLIENT_ID,
+      discordClientSecret: !!process.env.DISCORD_CLIENT_SECRET,
+      supabaseUrl: !!process.env.SUPABASE_URL,
+      supabaseKey: !!process.env.SUPABASE_SERVICE_KEY,
+    },
   }));
   app.get('/api/me', auth, async (req, res) => {
     const mine = owners.includes(req.session.user.id)

@@ -32,7 +32,7 @@ function createPostgresAdapter(connection) {
 let adapter;
 async function initDb() {
   if (adapter) return;
-  if (process.env.DATABASE_URL) {
+  if (process.env.DATABASE_URL && !(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)) {
     const project = process.env.SUPABASE_PROJECT_REF || 'kdxxtdiydepuiecpdpha';
     const connectionUrl = new URL(process.env.DATABASE_URL);
     if (!(connectionUrl.hostname === 'db.' + project + '.supabase.co' || (connectionUrl.hostname.endsWith('.pooler.supabase.com') && decodeURIComponent(connectionUrl.username) === 'postgres.' + project))) throw new Error('DATABASE_URL skal pege på det fælles Supabase-projekt ' + project);
