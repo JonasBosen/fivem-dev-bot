@@ -42,7 +42,7 @@ async function renderDeveloperWorkspace() {
     const done=h('input',{type:'checkbox',onchange:()=>{draft.status=done.checked?'done':'doing';setDirty();drawState();}});
     function drawState(){taken.checked=['doing','done'].includes(draft.status);done.checked=draft.status==='done';banner.className=`work-state status-${draft.status}`;banner.replaceChildren(h('span',{class:'work-dot'}),states[draft.status]);}
     drawState();
-    const actions=h('div',{class:'actions'},...['todo','doing','done'].map(s=>h('button',{class:`btn sec status-${s}`,onclick:run(async()=>{draft.status=s;setDirty();drawState();await save();})},{todo:'Sæt som ikke taget',doing:'Tag opgaven',done:'Markér færdig'}[s])));
+    const actions=h('div',{class:'actions'},...['todo','doing','done','rejected'].map(s=>h('button',{class:`btn sec status-${s}`,onclick:run(async()=>{draft.status=s;setDirty();drawState();await save();})},{todo:'Sæt som ikke taget',doing:'Tag opgaven',done:'Markér færdig',rejected:'Afvis sag'}[s])));
     const checklist=h('div'),progress=h('p',{class:'muted'});
     function drawChecks(){
       progress.textContent=`${draft.checklist.filter(c=>c.done).length} af ${draft.checklist.length} punkter udført`;
@@ -73,19 +73,23 @@ async function renderDeveloperWorkspace() {
     const tabs=h('div',{class:'work-tabs'}),content=h('div');
     const panels={
       work:h('div',{},fields,notes,h('h3',{},'Tjekliste'),progress,checklist,h('div',{class:'actions'},newItem,h('button',{class:'btn sec',onclick:addItem},'Tilføj punkt'))),
-      images:h('div',{},h('h3',{},'Billeder og dokumentation'),h('p',{class:'muted'},'Billeder fra Discord og dine egne uploads samles her. PNG, JPG, GIF eller WebP · højst 6 MB pr. billede.'),gallery,h('div',{class:'actions'},upload,uploadButton)),
+      images:h('div',{},h('h3',{},'Billeder og dokumentation'),h('p',{class:'muted'},'Billeder fra Discord og dine egne uploads samles her. PNG, JPG, GIF eller WebP · højst 6 MB pr. billede.'),gallery,h('button',{class:'btn sec',onclick:run(async()=>drawFiles((await api(`${base}/${id}`)).files||[]))},'Hent nye billeder'),h('div',{class:'actions'},upload,uploadButton)),
       conversation:h('div',{},h('h3',{},'Samtale med borgeren'),conversation,reply,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{const saved=await api(`${base}/${id}/comments`,{method:'POST',body:{text:reply.value}});drawComments(saved.comments||[]);reply.value='';toast(saved.sync_error||'Svar sendt');})},'Send svar'),h('button',{class:'btn sec',onclick:run(async()=>{drawComments((await api(`${base}/${id}`)).comments||[]);})},'Hent nye beskeder')))
     };
     function tab(key){content.replaceChildren(panels[key]);[...tabs.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===key));}
     for(const [key,label]of Object.entries({work:'Noter & tjekliste',images:'Billeder',conversation:'Samtale'}))tabs.append(h('button',{class:'btn sec','data-tab':key,onclick:()=>tab(key)},label));
-    detail.replaceChildren(h('div',{class:'top'},h('h2',{},`Opgave #${id}`),banner),h('p',{class:'muted'},'Oprettet '+date(task.created_at)),actions,h('div',{class:'work-checkboxes'},h('label',{},taken,' Opgaven er taget'),h('label',{},done,' Opgaven er færdig')),tabs,content,h('div',{class:'work-save'},h('button',{class:'btn',onclick:run(save)},'Gem opgave, noter og tjekliste'),saveInfo));
+    const deleteButton=h('button',{class:'btn bad',onclick:run(async()=>{if(!window.confirm('Slet sagen fra tavlen? Historik og dokumentation bevares i loggen.'))return;await api(`${base}/${id}`,{method:'DELETE',body:{}});dirty=false;selected=null;detail.replaceChildren(h('p',{},'Sagen er slettet fra tavlen. Historikken er bevaret i loggen.'));await refresh();toast('Sagen er slettet og logget');})},'Slet sag');
+    detail.replaceChildren(h('div',{class:'top'},h('h2',{},`Opgave #${id}`),banner),deleteButton,h('p',{class:'muted'},'Oprettet '+date(task.created_at)),actions,h('div',{class:'work-checkboxes'},h('label',{},taken,' Opgaven er taget'),h('label',{},done,' Opgaven er færdig')),tabs,content,h('div',{class:'work-save'},h('button',{class:'btn',onclick:run(save)},'Gem opgave, noter og tjekliste'),saveInfo));
     tab('work');draw();detail.scrollIntoView({behavior:'smooth',block:'start'});
   }
   const newTask={title:'',description:''};
   const newCard=h('details',{class:'card work-new'},h('summary',{},'+ Opret en intern opgave'),h('p',{class:'muted'},'Gem egne arbejdsopgaver, idéer eller huskelister her.'),field({k:'title',l:'Titel'},newTask),field({k:'description',l:'Beskrivelse',t:'textarea'},newTask),h('button',{class:'btn',onclick:run(async()=>{
     if(!canLeave())return;const task=await api(base,{method:'POST',body:newTask});dirty=false;newTask.title='';newTask.description='';await refresh();newCard.open=false;await open(task.id);toast('Opgaven er gemt');
   })},'Opret og åbn opgave'));
+  const logBody=h('div');
+  const labels={created:'Sag oprettet',updated:'Sag ændret',rejected:'Sag afvist',deleted:'Sag slettet',comment:'Kommentar tilføjet',image_uploaded:'Billede vedhæftet'};
+  const log=h('details',{class:'card'},h('summary',{},'Aktivitetslog · ændringer, billeder og slettede sager'),h('p',{class:'muted'},'Viser de seneste 300 hændelser. Historikken bevares også, når en sag slettes. Loggen vises kun for udviklere og administratorer.'),h('button',{class:'btn sec',onclick:run(async()=>{const events=await api(base+'/audit/events');logBody.replaceChildren(...events.map(e=>h('details',{class:'work-comment'},h('summary',{},date(e.created_at)+' · #'+e.task_id+' · '+(labels[e.action]||e.action)+' · '+e.user_id),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere'},JSON.stringify(e.details,null,2)),e.details.fileId&&h('a',{href:base+'/'+e.task_id+'/files/'+e.details.fileId,target:'_blank',rel:'noopener'},'Åbn vedhæftet billede'),e.action==='created'&&e.details.image&&h('a',{href:base+'/'+e.task_id+'/image',target:'_blank',rel:'noopener'},'Åbn oprindeligt billede'))));})},'Hent aktivitetslog'),logBody);
   draw();
-  return [h('div',{class:'card work-header'},h('div',{},h('h2',{},'Udviklerens arbejdsplads'),h('p',{class:'muted'},'Planlæg arbejdet, gem dokumentation og følg borgernes fejlmeldinger ét sted.')),counts),h('div',{class:'work-tools'},search,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager')),newCard,board,detail,
+  return [h('div',{class:'card work-header'},h('div',{},h('h2',{},'Udviklerens arbejdsplads'),h('p',{class:'muted'},'Planlæg arbejdet, gem dokumentation og følg borgernes fejlmeldinger ét sted.')),counts),h('div',{class:'work-tools'},search,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager')),newCard,board,detail,log,
     ...(!G.developerOnly?[panelCard('developer','Send fejlmeldingspanelet til Discord.'),settingsCard('developer','Adgang og roller')]:[])];
 }

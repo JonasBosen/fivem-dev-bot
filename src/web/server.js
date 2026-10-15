@@ -106,7 +106,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, no-store').type(image.mime).send(Buffer.from(image.content,'base64'));
   }));
   app.get('/api/guild/:gid/developer', auth, devAccess, wrap(async req =>
-    (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments)}))));
+    (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments)}))));
+  app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').list(req.guild.id)));
+  app.delete('/api/guild/:gid/developer/:id',auth,devAccess,wrap(req=>developer.remove(req.guild,Number(req.params.id),req.session.user.id)));
   app.get('/api/guild/:gid/developer/:id',auth,devAccess,wrap(async req=>{
     const task=await developer.get(req.guild.id,Number(req.params.id));
     if(!task) throw new Error('Sagen findes ikke');
