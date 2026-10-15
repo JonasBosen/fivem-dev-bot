@@ -39,7 +39,6 @@ client.once(Events.ClientReady, async (c) => {
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   giveaways.startTimer(c);
   stream.startPolling(c);
-  require('./modules/restarts').start(c);
   require('./modules/report-panel').refreshPanels(c).catch(e=>console.warn('[fejlpanel]',e.message));
   music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
 });
