@@ -1,5 +1,5 @@
 const {db}=require('../db');
-const defaults={scheduledStart:'',scheduledEnd:'',timerStartedAt:0,position:0,archived:false,reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
+const defaults={reportType:'bug',developers:[],reporterName:'',columnId:'',scheduledStart:'',scheduledEnd:'',timerStartedAt:0,position:0,archived:false,reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
 function validate(input={}) {
   const out={...defaults};
   for(const key of Object.keys(defaults))if(input[key]!==undefined)out[key]=input[key];
@@ -10,6 +10,11 @@ function validate(input={}) {
   if(typeof out.position!=='number'||!Number.isFinite(out.position)||Math.abs(out.position)>1e15)throw new Error('Ugyldig placering');
   if(typeof out.archived!=='boolean')throw new Error('Ugyldigt arkivvalg');
   if(!['bug','feature','optimization','mapping','vehicle','ui','maintenance'].includes(out.kind))throw new Error('Ukendt opgavetype');
+  if(!['bug','request'].includes(out.reportType))throw new Error('Ugyldig sagstype');
+  if(!Array.isArray(out.developers)||out.developers.length>20||out.developers.some(d=>typeof d.id!=='string'||d.id.length>40||typeof d.name!=='string'||d.name.length>100))throw new Error('Vælg højst 20 udviklere');
+  out.developers=out.developers.map(d=>({...d}));
+  if(typeof out.reporterName!=='string'||out.reporterName.length>100)throw new Error('Ugyldigt borgernavn');
+  if(typeof out.columnId!=='string'||out.columnId&&!/^[-a-z0-9_]{1,60}$/.test(out.columnId))throw new Error('Ugyldig kolonne');
   if(!['low','normal','high','critical'].includes(out.priority))throw new Error('Ukendt prioritet');
   if(!['test','live','local'].includes(out.environment))throw new Error('Ukendt servermiljø');
   for(const key of ['estimateHours','spentHours'])if(typeof out[key]!=='number'||!Number.isFinite(out[key])||out[key]<0||out[key]>10000)throw new Error('Timer skal være mellem 0 og 10000');

@@ -6,6 +6,7 @@ const reason = (o) => o.setName('årsag').setDescription('Årsag');
 
 const platformOption=o=>o.setName('platform').setDescription('Streamplatform').setRequired(true).addChoices(...['twitch','youtube','kick','tiktok'].map(value=>({name:value,value})));
 const definitions = [
+  new S().setName('fødselsdag').setDescription('Registrér din fødselsdag eller brug fødselsdagspanelet'),
   new S().setName('stream').setDescription('Tilknyt din streamkanal eller meld live/slut')
     .addSubcommand(s=>s.setName('tilmeld').setDescription('Knyt din kanal til din Discord-bruger').addStringOption(platformOption).addStringOption(o=>o.setName('kanal').setDescription('Brugernavn eller YouTube UC-kanal-ID').setRequired(true)))
     .addSubcommand(s=>s.setName('live').setDescription('Send en streambesked manuelt').addStringOption(platformOption).addStringOption(o=>o.setName('titel').setDescription('Streamens titel').setMaxLength(200)))

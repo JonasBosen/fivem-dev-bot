@@ -17,7 +17,7 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 async function api(path, opts = {}) {
-  const r = await fetch(path, { method: opts.method || 'GET', headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const r = await fetch(path, { method: opts.method || 'GET',keepalive:!!opts.keepalive, headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
   if (r.status === 401) { location.href = '/login'; throw new Error('Log ind'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {const error=new Error(j.error || `Fejl ${r.status}`);error.status=r.status;throw error;}
@@ -46,6 +46,7 @@ function field(f, obj) {
   const set = (x) => { obj[f.k] = x; };
   let input;
   switch (f.t) {
+    case 'select':input=h('select',{onchange:e=>set(e.target.value)},...Object.entries(f.options).map(([value,label])=>h('option',{value},label)));input.value=v||Object.keys(f.options)[0];break;
     case 'toggle':
       return h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: v, onchange: (e) => set(e.target.checked) }), h('i'), f.l);
     case 'textarea':
@@ -83,7 +84,7 @@ function field(f, obj) {
           ...cur.map((row, i) => h('div', { class: 'row' },
             h('button', { type: 'button', class: 'btn sec sm del', onclick: () => { cur.splice(i, 1); draw(); } }, 'Fjern'),
             h('div', { class: 'grid' }, f.fields.map((sf) => field(sf, row))))),
-          h('button', { type: 'button', class: 'btn sec', onclick: () => { cur.push(structuredClone(f.new)); draw(); } }, `+ ${f.add || 'Tilføj'}`),
+          h('button', { type: 'button', class: 'btn sec', onclick: () => { const next=structuredClone(f.new);if(next.id)next.id='ny-'+crypto.randomUUID().slice(0,8);cur.push(next); draw(); } }, `+ ${f.add || 'Tilføj'}`),
         );
       };
       draw();
@@ -103,6 +104,7 @@ const SCHEMA = {
   general: [{ k: 'prefix', l: 'Prefix til custom commands', ph: '!' },{k:'adminRoles',l:'Roller med adgang til hele dashboardet',t:'roles'}],
   tickets: [
     { k: 'enabled', t: 'toggle', l: 'Supportsager slået til' },
+    {k:'allowCitizenClose',t:'toggle',l:'Borgeren må selv lukke sin sag'},
     { k: 'maxOpenPerUser', t: 'number', l: 'Maks åbne tickets pr. bruger', min: 1 },
     { k: 'categoryId', t: 'category', l: 'Kategori nye tickets oprettes i' },
     { k: 'logChannel', t: 'channel', l: 'Log-kanal (transcripts sendes hertil)' },
@@ -110,19 +112,20 @@ const SCHEMA = {
     { k: 'panelTitle', l: 'Panel: titel' },
     { k: 'panelText', t: 'textarea', l: 'Panel: tekst' },
     { k: 'openMessage', t: 'textarea', l: 'Besked i ny ticket', hint: PH },
+    {k:'quickResponses',t:'rows',l:'Hurtigsvar til support',add:'Nyt hurtigsvar',new:{label:'',text:''},fields:[{k:'label',l:'Titel på hurtigsvar'},{k:'text',t:'textarea',l:'Besked til borgeren'}]},
     { k: 'types', t: 'rows', l: 'Kategorier (op til 5 vises som knapper, flere som dropdown)', add: 'Ny kategori',
       new: { id: 'ny', label: 'Ny kategori', emoji: '🎫', questions: [] },
       fields: [{ k: 'id', l: 'ID (kort, uden mellemrum)' }, { k: 'label', l: 'Navn' }, { k: 'emoji', l: 'Emoji' },
-        { k: 'questions', t: 'list', l: 'Spørgsmål før ticket åbnes (maks 5)' }] },
+        {k:'color',t:'select',l:'Knapfarve',options:{blue:'Blå',green:'Grøn',red:'Rød',gray:'Grå'}},{k:'categoryId',t:'category',l:'Egen Discord-kategori (valgfri)'},{k:'supportRoles',t:'roles',l:'Ekstra supportroller til kategorien'},{ k: 'questions', t: 'list', l: 'Spørgsmål før ticket åbnes (maks 5)' }] },
   ],
   applications: [
     { k: 'reviewChannel', t: 'channel', l: 'Kanal hvor ansøgninger gennemgås' },
     { k: 'panelTitle', l: 'Panel: titel' },
     { k: 'panelText', t: 'textarea', l: 'Panel: tekst' },
-    { k: 'forms', t: 'rows', l: 'Formularer (maks 5 knapper)', add: 'Ny formular',
-      new: { id: 'ny', name: 'Ny formular', acceptRole: '', questions: [] },
+    { k: 'forms', t: 'rows', l: 'Formularer (højst 25 knapper)', add: 'Ny formular',
+      new: { id: 'ny',enabled:true, name: 'Ny formular', acceptRole: '', questions: [] },
       fields: [{ k: 'id', l: 'ID' }, { k: 'name', l: 'Navn' }, { k: 'acceptRole', t: 'role', l: 'Rolle ved accept' },
-        { k: 'questions', t: 'list', l: 'Spørgsmål (maks 5)' }] },
+        {k:'enabled',t:'toggle',l:'Åben for ansøgninger'},{k:'buttonLabel',l:'Egen knaptekst (valgfri)'},{k:'emoji',l:'Emoji'},{k:'color',t:'select',l:'Knapfarve',options:{blue:'Blå',green:'Grøn',red:'Rød',gray:'Grå'}},{k:'requiredRole',t:'role',l:'Krævet rolle for at ansøge'},{k:'minAccountAgeDays',t:'number',min:0,l:'Minimumsalder på Discord-konto (dage)'},{k:'reviewChannel',t:'channel',l:'Egen behandlingskanal (valgfri)'},{k:'removeRole',t:'role',l:'Fjern rolle ved accept'},{k:'denyRole',t:'role',l:'Tildel rolle ved afvisning'},{k:'acceptMessage',t:'textarea',l:'Privat svar ved accept (tom = standard)'},{k:'denyMessage',t:'textarea',l:'Privat svar ved afvisning (tom = standard)'},{ k: 'questions', t: 'list', l: 'Spørgsmål (maks 5)' }] },
   ],
   giveaways: [{ k: 'managerRole', t: 'role', l: 'Rolle der må styre giveaways' }],
   music: [
@@ -146,7 +149,7 @@ const SCHEMA = {
     { k: 'allowedDomains', t: 'list', l: 'Tilladte domæner når links er blokeret' },
   ],
   welcome: [
-    { k: 'enabled', t: 'toggle', l: 'Velkomst slået til' },
+    { k: 'enabled', t: 'toggle', l: 'Velkomst slået til' },{k:'title',l:'Overskrift · {server}'},{k:'imageOnly',t:'toggle',l:'Send kun billede/GIF som vedhæftning'},{k:'mentionMember',t:'toggle',l:'Ping det nye medlem'},{k:'showAvatar',t:'toggle',l:'Vis medlemmets profilbillede'},
     { k: 'channel', t: 'channel', l: 'Velkomst-kanal' },
     { k: 'autoRoles', t: 'roles', l: 'Auto-roller ved join', wide: true },
     { k: 'message', t: 'textarea', l: 'Velkomstbesked', hint: PH },
@@ -211,7 +214,7 @@ function panelCard(type, text) {
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],
+  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],
 ];
 
 const pages = {
@@ -256,7 +259,7 @@ const pages = {
       h('div', { class: 'card' }, h('h2', {}, 'Supportsager'), h('div', { class: 'tabs' }, tab('open', 'Åbne'), tab('closed', 'Lukkede'), tab('all', 'Alle')),
         h('div', { class: 'tablewrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ['ID', 'Kategori', 'Bruger', 'Status', 'Claimet af', 'Oprettet', ''].map((x) => h('th', {}, x)))), body))),
       panelCard('tickets', 'Sender en besked med knapper hvor medlemmer kan åbne en ticket.'),
-      settingsCard('tickets', 'Indstillinger'),
+      await renderModuleStudio('tickets','Ticketsystemets indstillinger og design'),
     ];
   },
 
@@ -279,7 +282,7 @@ const pages = {
     search.addEventListener('input',draw);filter.addEventListener('change',draw);draw();
     return dashboardTabs([
       {id:'overview',label:'Oversigt',content:[h('div',{class:'card'},h('h2',{},'Ansøgninger til Dream Network'),h('p',{class:'muted'},'Opret formularer, send et panel til Discord, og behandl medlemmernes indsendelser her.'),h('div',{class:'stats'},stat(Object.keys(forms).length,'Formularer'),stat(list.filter(a=>a.status==='pending').length,'Afventer behandling'),stat(list.filter(a=>a.status==='accepted').length,'Accepterede')),h('h3',{},'Jeres formularer'),...Object.values(forms).map(f=>h('div',{class:'row'},h('b',{},f.name),h('p',{class:'muted'},(f.questions||[]).length+' spørgsmål · '+(f.acceptRole?'Tildeler en rolle ved accept':'Ingen automatisk rolle')))),!Object.keys(forms).length&&h('p',{},'Opret jeres første formular under Formularer og indstillinger.'))]},
-      {id:'forms',label:'Formularer og indstillinger',content:[settingsCard('applications','Formularer og indstillinger')]},
+      {id:'forms',label:'Formularer og indstillinger',content:[await renderModuleStudio('applications','Formularer og indstillinger')]},
       {id:'panels',label:'Discord-paneler',content:[panelCard('applications','Send en besked med knapper, som medlemmer kan bruge til at åbne jeres formularer.')]},
       {id:'submissions',label:'Indsendelser',content:[h('div',{class:'card'},h('h2',{},'Indsendelser'),h('div',{class:'actions'},search,filter),results)]}
     ],G.id+'-applications','overview');
@@ -340,7 +343,7 @@ const pages = {
   },
 
   async welcome() {
-    return [settingsCard('welcome', 'Velkomst, farvel & auto-roller'), settingsCard('verification', 'Verificering'),
+    return [await renderModuleStudio('welcome','Velkomst, farvel og automatiske roller'), settingsCard('verification', 'Verificering'),
       panelCard('verification', 'Sender en "Verificér mig"-knap. Tip: giv @everyone adgang til kun denne kanal, og verificeret-rollen adgang til resten.')];
   },
 
@@ -375,6 +378,8 @@ const pages = {
       h('div', { class: 'card muted' }, 'Twitch kræver TWITCH_CLIENT_ID og TWITCH_CLIENT_SECRET i .env. YouTube virker uden nøgle – find kanal-ID’et (UC…) under "Del kanal → Kopiér kanal-ID". Der tjekkes hvert 2. minut.')];
   },
 
+  async birthdays(){return renderBirthdays();},
+  async slideshow(){return renderSlideshow();},
   async custom() { return dashboardTabs([{id:'discord',label:'Discord-kommandoer',content:[await renderCommandCatalog()]},{id:'custom',label:'Egne tekstkommandoer',content:[settingsCard('custom','Egne tekstkommandoer')]}],G.id+'-commands','discord'); },
 };
 

@@ -14,7 +14,7 @@ function panelPayload(cfg) {
   let row;
   if (types.length <= 5) {
     row = new ActionRowBuilder().addComponents(types.map((t) => {
-      const b = new ButtonBuilder().setCustomId(`ticket:open:${t.id}`).setLabel(t.label.slice(0, 80)).setStyle(ButtonStyle.Primary);
+      const b = new ButtonBuilder().setCustomId(`ticket:open:${t.id}`).setLabel(t.label.slice(0, 80)).setStyle({blue:ButtonStyle.Primary,green:ButtonStyle.Success,red:ButtonStyle.Danger,gray:ButtonStyle.Secondary}[t.color]||ButtonStyle.Primary);
       if (t.emoji) b.setEmoji(t.emoji);
       return b;
     }));
@@ -27,13 +27,13 @@ function panelPayload(cfg) {
 
 async function sendPanel(guild, channelId) {
   const cfg = (await settings.get(guild.id)).tickets;
-  const msg = await sendTo(guild, channelId, panelPayload(cfg));
+  const msg = await sendTo(guild, channelId, await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),panelPayload(cfg)));
   if (!msg) throw new Error('Kunne ikke sende panelet – tjek kanal og botens rettigheder.');
   return msg;
 }
 
-function isStaff(member, cfg) {
-  return isAdmin(member) || hasAnyRole(member, cfg.supportRoles);
+function isStaff(member, cfg, typeId) {
+  return isAdmin(member) || hasAnyRole(member,[...cfg.supportRoles,...(cfg.types.find(t=>t.id===typeId)?.supportRoles||[])]);
 }
 
 async function startOpen(interaction, typeId) {
@@ -60,15 +60,19 @@ async function startOpen(interaction, typeId) {
 async function createTicket(member, type, answers) {
   const guild = member.guild;
   const cfg = (await settings.get(guild.id)).tickets;
+  if(!cfg.enabled)throw new Error('Supportsager er slået fra');
+  type=cfg.types.find(t=>t.id===type.id);if(!type)throw new Error('Kategorien findes ikke længere');
+  const supportRoles=[...new Set([...cfg.supportRoles,...(type.supportRoles||[])])];
+  const open=await db.prepare("SELECT COUNT(*) n FROM tickets WHERE guild_id=? AND user_id=? AND status='open'").get(guild.id,member.id);if(Number(open.n)>=(cfg.maxOpenPerUser||1))throw new Error('Du har nået grænsen for åbne supportsager');
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
     { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
-    ...cfg.supportRoles.filter((r) => guild.roles.cache.has(r)).map((r) => ({
+    ...supportRoles.filter((r) => guild.roles.cache.has(r)).map((r) => ({
       id: r, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles],
     })),
   ];
-  const parent = cfg.categoryId && guild.channels.cache.get(cfg.categoryId)?.type === ChannelType.GuildCategory ? cfg.categoryId : null;
+  const parentId=type.categoryId||cfg.categoryId;const parent=parentId&&guild.channels.cache.get(parentId)?.type===ChannelType.GuildCategory?parentId:null;
   const info = (await db.prepare('INSERT INTO tickets (guild_id, user_id, type, answers, created_at) VALUES (?,?,?,?,?)')
     .run(guild.id, member.id, type.id, JSON.stringify(answers), Date.now()));
   const id = info.lastInsertRowid;
@@ -80,10 +84,11 @@ async function createTicket(member, type, answers) {
   (type.questions || []).slice(0, 5).forEach((q, i) => answers[i] && e.addFields({ name: q.slice(0, 256), value: answers[i].slice(0, 1024) }));
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('ticket:close').setLabel('Luk').setEmoji('🔒').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('ticket:claim').setLabel('Claim').setEmoji('🙌').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('ticket:claim').setLabel('Tag sagen').setEmoji('🙌').setStyle(ButtonStyle.Success),
   );
-  const pings = [`<@${member.id}>`, ...cfg.supportRoles.filter(Boolean).map((r) => `<@&${r}>`)].join(' ');
-  await channel.send({ content: pings, embeds: [e], components: [row] });
+  const pings = [`<@${member.id}>`, ...supportRoles.filter(Boolean).map((r) => `<@&${r}>`)].join(' ');
+  const components=[row];if(cfg.quickResponses?.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('ticket:quick').setPlaceholder('Hurtigsvar til borgeren (support)').addOptions(cfg.quickResponses.slice(0,25).map((q,i)=>({label:q.label.slice(0,100),value:String(i)})))));
+  await channel.send({ content:pings,embeds:[e],components,allowedMentions:{parse:[],users:[member.id],roles:supportRoles} });
   await sendTo(guild, cfg.logChannel, { embeds: [embed('Ticket åbnet', `#${id} · ${type.label} · <@${member.id}> · ${channel}`)] });
   return channel;
 }
@@ -136,12 +141,13 @@ async function onInteraction(interaction) {
     const ch = await createTicket(interaction.member, type, answers);
     return interaction.editReply(`Din ticket er oprettet: ${ch}`);
   }
+  if(id==='ticket:quick'&&interaction.isStringSelectMenu()){const ticket=await ticketByChannel(interaction.channelId),cfg=(await settings.get(interaction.guild.id)).tickets;if(!ticket||!isStaff(interaction.member,cfg,ticket.type))return interaction.reply({content:'Kun support kan sende hurtigsvar.',...EPH});const answer=cfg.quickResponses?.[Number(interaction.values[0])];if(!answer)throw new Error('Hurtigsvaret findes ikke længere');return interaction.reply({content:answer.text,allowedMentions:{parse:[]}});}
   if (interaction.isButton() && (id === 'ticket:close' || id === 'ticket:claim')) {
     const ticket = (await ticketByChannel(interaction.channelId));
     if (!ticket) return interaction.reply({ content: 'Dette er ikke en åben ticket.', ...EPH });
     const cfg = (await settings.get(interaction.guild.id)).tickets;
     if (id === 'ticket:claim') {
-      if (!isStaff(interaction.member, cfg)) return interaction.reply({ content: 'Kun support kan claime.', ...EPH });
+      if (!isStaff(interaction.member,cfg,ticket.type)) return interaction.reply({ content: 'Kun support kan claime.', ...EPH });
       (await db.prepare('UPDATE tickets SET claimed_by=? WHERE id=?').run(interaction.user.id, ticket.id));
       return interaction.reply({ embeds: [embed(null, `🙌 <@${interaction.user.id}> har taget denne ticket.`)] });
     }

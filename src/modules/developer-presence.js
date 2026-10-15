@@ -1,0 +1,4 @@
+const {db}=require('../db');
+async function list(gid){return db.prepare('SELECT user_id,discord_name,total_ms,last_seen,active FROM dev_presence WHERE guild_id=? ORDER BY total_ms DESC').all(gid);}
+async function heartbeat(gid,uid,name,now=Date.now(),active=true){await db.prepare('INSERT INTO dev_presence (guild_id,user_id,discord_name,total_ms,last_seen,active) VALUES (?,?,?,0,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET discord_name=excluded.discord_name,total_ms=dev_presence.total_ms+CASE WHEN dev_presence.active=1 AND excluded.last_seen-dev_presence.last_seen BETWEEN 0 AND 75000 THEN excluded.last_seen-dev_presence.last_seen ELSE 0 END,last_seen=excluded.last_seen,active=excluded.active').run(gid,uid,String(name||uid).slice(0,100),now,active?1:0);return list(gid);}
+module.exports={list,heartbeat};

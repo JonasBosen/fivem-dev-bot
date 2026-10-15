@@ -1,0 +1,32 @@
+[
+  {
+    "id": "todo",
+    "name": "Ikke taget",
+    "color": "#94a3b8",
+    "status": "todo"
+  },
+  {
+    "id": "critical",
+    "name": "Kritisk",
+    "color": "#ef4444",
+    "status": "todo"
+  },
+  {
+    "id": "doing",
+    "name": "Taget · I gang",
+    "color": "#f59e0b",
+    "status": "doing"
+  },
+  {
+    "id": "closed",
+    "name": "Afsluttet",
+    "color": "#10b981",
+    "status": "closed"
+  },
+  {
+    "id": "rejected",
+    "name": "Afvist",
+    "color": "#ef4444",
+    "status": "rejected"
+  }
+]
