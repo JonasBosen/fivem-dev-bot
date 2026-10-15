@@ -59,6 +59,7 @@ async function initDb() {
     const local = new DatabaseSync(file);
     local.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
     local.exec(SQLITE_SCHEMA);
+    if(!local.prepare('PRAGMA table_info(panel_media)').all().some(c=>c.name==='scope'))local.exec("ALTER TABLE panel_media ADD COLUMN scope TEXT NOT NULL DEFAULT 'shared'");
     adapter = local;
   }
 }

@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS panel_users (guild_id TEXT NOT NULL,user_id TEXT NOT 
 CREATE TABLE IF NOT EXISTS panel_invites (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,user_id TEXT NOT NULL,salt TEXT NOT NULL,hash TEXT NOT NULL,expires_at BIGINT NOT NULL,used_at BIGINT NOT NULL DEFAULT 0,created_by TEXT NOT NULL,created_at INTEGER);
 CREATE TABLE IF NOT EXISTS dev_registry (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,data TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,created_at INTEGER,updated_at INTEGER);
 CREATE TABLE IF NOT EXISTS dev_presence (guild_id TEXT NOT NULL,user_id TEXT NOT NULL,discord_name TEXT NOT NULL,total_ms BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 0,last_seen BIGINT NOT NULL,PRIMARY KEY(guild_id,user_id));
-CREATE TABLE IF NOT EXISTS panel_media (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,user_id TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,content TEXT NOT NULL,created_at INTEGER);
+CREATE TABLE IF NOT EXISTS panel_media (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,user_id TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,content TEXT NOT NULL,created_at INTEGER,scope TEXT NOT NULL DEFAULT 'shared');
 CREATE TABLE IF NOT EXISTS dev_gate (guild_id TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS dev_gate_attempts (guild_id TEXT NOT NULL, subject TEXT NOT NULL, failures INTEGER NOT NULL, until BIGINT NOT NULL, PRIMARY KEY(guild_id,subject));
 CREATE TABLE IF NOT EXISTS site_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, module TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL, created_at INTEGER);
@@ -32,5 +32,5 @@ const POSTGRES_SCHEMA = 'CREATE SCHEMA IF NOT EXISTS allbot;\n' + SQLITE_SCHEMA
   .replace(/ON dev_files/g, 'ON allbot.dev_files')
   .replace(/ON site_audit/g, 'ON allbot.site_audit')
   .replace(/ON dev_audit/g, 'ON allbot.dev_audit')
-  .replace(/CREATE TABLE IF NOT EXISTS (\w+)/g, 'CREATE TABLE IF NOT EXISTS allbot.$1');
+  .replace(/CREATE TABLE IF NOT EXISTS (\w+)/g, 'CREATE TABLE IF NOT EXISTS allbot.$1') + "\nALTER TABLE allbot.panel_media ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'shared';";
 module.exports = { SQLITE_SCHEMA, POSTGRES_SCHEMA };

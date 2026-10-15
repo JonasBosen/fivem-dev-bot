@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS allbot.panel_users (guild_id TEXT NOT NULL,user_id TE
 CREATE TABLE IF NOT EXISTS allbot.panel_invites (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,user_id TEXT NOT NULL,salt TEXT NOT NULL,hash TEXT NOT NULL,expires_at BIGINT NOT NULL,used_at BIGINT NOT NULL DEFAULT 0,created_by TEXT NOT NULL,created_at BIGINT);
 CREATE TABLE IF NOT EXISTS allbot.dev_registry (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,data TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,created_at BIGINT,updated_at BIGINT);
 CREATE TABLE IF NOT EXISTS allbot.dev_presence (guild_id TEXT NOT NULL,user_id TEXT NOT NULL,discord_name TEXT NOT NULL,total_ms BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 0,last_seen BIGINT NOT NULL,PRIMARY KEY(guild_id,user_id));
-CREATE TABLE IF NOT EXISTS allbot.panel_media (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,user_id TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,content TEXT NOT NULL,created_at BIGINT);
+CREATE TABLE IF NOT EXISTS allbot.panel_media (id TEXT PRIMARY KEY,guild_id TEXT NOT NULL,user_id TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,content TEXT NOT NULL,created_at BIGINT,scope TEXT NOT NULL DEFAULT 'shared');
 CREATE TABLE IF NOT EXISTS allbot.dev_gate (guild_id TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS allbot.dev_gate_attempts (guild_id TEXT NOT NULL, subject TEXT NOT NULL, failures INTEGER NOT NULL, until BIGINT NOT NULL, PRIMARY KEY(guild_id,subject));
 CREATE TABLE IF NOT EXISTS allbot.site_audit (id SERIAL PRIMARY KEY, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, module TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL, created_at BIGINT);
@@ -38,6 +38,28 @@ CREATE TABLE IF NOT EXISTS allbot.dev_planning (guild_id TEXT NOT NULL, task_id 
 CREATE TABLE IF NOT EXISTS allbot.dev_images (task_id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, mime TEXT NOT NULL, content TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS dev_tasks_guild ON allbot.dev_tasks(guild_id);
 CREATE UNIQUE INDEX IF NOT EXISTS dev_tasks_legacy ON allbot.dev_tasks(guild_id,legacy_id);
+
+ALTER TABLE allbot.panel_media ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'shared';
+-- Separate existing references without changing the original GIF/image bytes.
+ALTER TABLE allbot.panel_media ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'shared';
+CREATE INDEX IF NOT EXISTS panel_media_scope ON allbot.panel_media(guild_id,scope,created_at);
+INSERT INTO allbot.panel_media(id,guild_id,user_id,name,mime,content,created_at,scope)
+SELECT m.id||'-birthdays',m.guild_id,m.user_id,m.name,m.mime,m.content,m.created_at,'birthdays'
+FROM allbot.panel_media m JOIN allbot.settings s ON s.guild_id=m.guild_id
+WHERE m.scope='shared' AND s.data::jsonb #>> '{birthdays,mediaId}'=m.id
+ON CONFLICT(id) DO NOTHING;
+UPDATE allbot.settings s SET data=jsonb_set(s.data::jsonb,'{birthdays,mediaId}',to_jsonb(m.id||'-birthdays'))::text
+FROM allbot.panel_media m WHERE m.guild_id=s.guild_id AND m.scope='shared' AND s.data::jsonb #>> '{birthdays,mediaId}'=m.id;
+INSERT INTO allbot.panel_media(id,guild_id,user_id,name,mime,content,created_at,scope)
+SELECT DISTINCT m.id||'-slideshow',m.guild_id,m.user_id,m.name,m.mime,m.content,m.created_at,'slideshow'
+FROM allbot.settings s CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.data::jsonb #> '{slideshow,slides}','[]'::jsonb)) slide
+JOIN allbot.panel_media m ON m.guild_id=s.guild_id AND m.id=slide->>'mediaId'
+WHERE m.scope='shared' ON CONFLICT(id) DO NOTHING;
+UPDATE allbot.settings s SET data=jsonb_set(s.data::jsonb,'{slideshow,slides}',(
+ SELECT COALESCE(jsonb_agg(CASE WHEN m.id IS NOT NULL THEN jsonb_set(slide,'{mediaId}',to_jsonb(m.id||'-slideshow')) ELSE slide END ORDER BY ord),'[]'::jsonb)
+ FROM jsonb_array_elements(s.data::jsonb #> '{slideshow,slides}') WITH ORDINALITY AS a(slide,ord)
+ LEFT JOIN allbot.panel_media m ON m.guild_id=s.guild_id AND m.id=slide->>'mediaId' AND m.scope='shared'
+))::text WHERE jsonb_typeof(s.data::jsonb #> '{slideshow,slides}')='array';
 
 
 CREATE TABLE IF NOT EXISTS allbot.query_templates (key TEXT PRIMARY KEY, statement TEXT NOT NULL, parameters INTEGER NOT NULL);
@@ -142,9 +164,8 @@ INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('5df7de43a
 INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('89f65b3e6ed3f4e09c643c1be984ec595700361138f92a07d5ccac86e6685fd5','UPDATE allbot.giveaways SET entries=$1 WHERE id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
 INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('199ff62729f6d6e970f36fe7d5ef095e95da85adb19dcc24a0ff7e1f600eaa6f','INSERT INTO allbot.warnings (guild_id, user_id, mod_id, reason, created_at) VALUES ($1,$2,$3,$4,$5)',5) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
 INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('0c1c661354a19f90c83319a16c2bbddb6ced08c5a80c66f401f21611c5901796','SELECT * FROM allbot.warnings WHERE guild_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT 15',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
-INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('528c28c9ca09354fe96dd79a1dde1a69635d49e703d33fc22334aa442ebadc56','SELECT COUNT(*) AS n FROM allbot.panel_media WHERE guild_id=$1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
-INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('a0fa80f1c5c25c408ca518f7c9e99047f3c7fc52ed43cfd6adae162e0f76b3ce','INSERT INTO allbot.panel_media (id,guild_id,user_id,name,mime,content,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',7) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
-INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('10d3fd263bc242be20a5160c439f6dee8aed69d554ad1531b335ad2eb8c87644','SELECT id,name,mime,created_at FROM allbot.panel_media WHERE guild_id=$1 ORDER BY created_at DESC',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('baf1e4ce4bf9ff6888171b0868e0620425f74ffa06d6a0bd7ff7f659d3c417a4','INSERT INTO allbot.panel_media (id,guild_id,user_id,name,mime,content,created_at,scope) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',8) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('cb3733926f5a9d2d2ad91a03838f7af61d777493a25d172c420bd0c0af00c0ff','SELECT id,name,mime,created_at FROM allbot.panel_media WHERE guild_id=$1 AND scope=$2 ORDER BY created_at DESC',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
 INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('973447cf4b41fd2ff2c7d77ed3a4731dd7779922369361f4642a0aa25d182906','SELECT * FROM allbot.panel_media WHERE guild_id=$1 AND id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
 INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('d007e161e7198be42153c0972482719ed702ca19767a4f6313c143140e0ededf','SELECT * FROM allbot.panel_users WHERE guild_id=$1 AND user_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
 INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('efe11ebca277895b853ce87aa369f27f4763ce7e2d239416fe6c739fd63c4c29','UPDATE allbot.panel_invites SET used_at=$1 WHERE guild_id=$2 AND user_id=$3 AND used_at=0',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;

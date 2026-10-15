@@ -260,9 +260,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     await audit.record(req.guild.id,req.session.user.id,module,'navigation',{action});
   }));
   app.post('/api/guild/:gid/birthdays/panel',auth,guildAccess,wrap(async req=>{const ch=await req.guild.channels.fetch(req.body.channel);if(!ch?.isTextBased())throw new Error('Vælg en tekstkanal');await ch.send(require('../modules/community-studios').birthdayPanel());return {ok:true};}));
-  app.get('/api/guild/:gid/media',auth,guildAccess,wrap(req=>require('../modules/panel-media').list(req.guild.id)));
-  app.post('/api/guild/:gid/media',auth,guildAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/panel-media').upload(req.guild.id,req.session.user.id,req.body)));
-  app.get('/api/guild/:gid/media/:id',auth,guildAccess,wrap(async(req,res)=>{const img=await require('../modules/panel-media').get(req.guild.id,req.params.id);if(!img)return res.status(404).json({error:'Billedet findes ikke'});res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, max-age=300').type(img.mime).send(Buffer.from(img.content,'base64'));}));
+  app.get('/api/guild/:gid/media',auth,guildAccess,wrap(req=>require('../modules/panel-media').list(req.guild.id,req.query.scope)));
+  app.post('/api/guild/:gid/media',auth,guildAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/panel-media').upload(req.guild.id,req.session.user.id,req.body,req.query.scope)));
+  app.get('/api/guild/:gid/media/:id',auth,guildAccess,wrap(async(req,res)=>{const img=await require('../modules/panel-media').get(req.guild.id,req.params.id,req.query.scope||'shared');if(!img)return res.status(404).json({error:'Billedet findes ikke'});res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, max-age=300').type(img.mime).send(Buffer.from(img.content,'base64'));}));
   app.post('/api/guild/:gid/welcome/test',auth,guildAccess,wrap(async req=>{const cfg=require('../modules/panel-media').validate(req.body),member=await req.guild.members.fetch(req.session.user.id),ch=await req.guild.channels.fetch(cfg.channel);if(!ch?.isTextBased())throw new Error('Vælg en tekstkanal');await ch.send(await community.welcomePayload(member,cfg));return {ok:true};}));
   app.get('/api/guild/:gid/commands',auth,guildAccess,wrap(req=>require('../modules/command-catalog').load(req.guild)));
   app.get('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.accounts(req.guild.id)));
