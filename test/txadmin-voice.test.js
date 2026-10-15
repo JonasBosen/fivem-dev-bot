@@ -3,7 +3,7 @@ const {initDb,db,settings}=require('../src/db'),tx=require('../src/modules/txadm
 test('FiveM voice counter shows actual players, separates missing contact, throttles renames across reloads and preserves text configuration',async()=>{await initDb();try{
  const now=Date.now(),changes=[],voice={type:ChannelType.GuildVoice,name:'Serverstatus',setName:async name=>{voice.name=name;changes.push(name);}},guild={id:'voice',channels:{fetch:async()=>voice}};
  const setState=async patch=>{const cfg=(await settings.get(guild.id)).txadmin;await settings.setModule(guild.id,'txadmin',{...cfg,state:{...cfg.state,...patch}});};
- await settings.setModule(guild.id,'txadmin',{enabled:true,channel:'text-channel',voiceChannel:'voice-channel',state:{lastSeen:now,phase:'online',players:12,maxPlayers:48}});
+ await settings.setModule(guild.id,'txadmin',{enabled:true,sourceMode:'bridge',channel:'text-channel',voiceChannel:'voice-channel',state:{lastSeen:now,phase:'online',players:12,maxPlayers:48}});
  await tx.updateVoice(guild,now);assert.equal(voice.name,'🟢 Online · 12/48 spillere');await tx.updateVoice(guild,now+1000);assert.equal(changes.length,1);
  await setState({players:13});await tx.updateVoice(guild,now+30000);assert.equal(changes.length,1);await setState({lastSeen:now+360001});await tx.updateVoice(guild,now+360001);assert.equal(voice.name,'🟢 Online · 13/48 spillere');
  await tx.updateVoice(guild,now+460000);assert.equal(changes.length,2);await tx.updateVoice(guild,now+611000);assert.equal(voice.name,'🔴 Offline / ingen kontakt');assert.equal((await settings.get(guild.id)).txadmin.channel,'text-channel');
