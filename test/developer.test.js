@@ -82,3 +82,19 @@ test('configured citizen and manager roles grant separate access and removal tak
     assert.equal(await developer.canReport(guild,'user'),true);
   } finally {await db.close();}
 });
+
+test('FiveM planning fields persist, stay private and appear in the audit history',async()=>{
+  await initDb();
+  try {
+    const guild={id:'guild-a',client:{}};
+    let task=await developer.create(guild,'dev',{title:'Garage bug',description:'Bil forsvinder'});
+    task=await developer.update(guild,task.id,{...task,planning:{...task.planning,priority:'critical',resource:'qb-garages',assignee:'Udvikler',estimateHours:2.5,spentHours:1.25,deadline:'2026-10-20',actual:'Intern stacktrace'}},'dev');
+    assert.equal(task.planning.resource,'qb-garages');
+    assert.equal((await require('../src/modules/developer-planning').all(guild.id))[task.id].spentHours,1.25);
+    assert.deepEqual(await require('../src/modules/developer-planning').all('other-guild'),{});
+    const history=await require('../src/modules/developer-audit').list(guild.id);
+    assert.equal(history[0].details.after.planning.priority,'critical');
+    await assert.rejects(developer.update(guild,task.id,{...task,planning:{...task.planning,spentHours:-1}},'dev'),/Timer/);
+    await assert.rejects(developer.update(guild,task.id,{...task,planning:{...task.planning,commitUrl:'javascript:alert(1)'}},'dev'),/https/);
+  }finally{await db.close();}
+});
