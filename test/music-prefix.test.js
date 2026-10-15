@@ -7,4 +7,5 @@ test('music text commands preserve links and names and leave unrelated messages 
   assert.deepEqual(parseMessage('di!stop','di!'),{name:'stop',query:''});
   assert.equal(parseMessage('hello !play'),null);assert.equal(parseMessage('!rules'),null);
   assert.equal(typeof require('discord-player-youtubei').YoutubeExtractor,'function');
+  assert.ok(require('@snazzah/davey').DAVE_PROTOCOL_VERSION>=1);
 });
