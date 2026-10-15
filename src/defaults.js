@@ -1,7 +1,7 @@
 // Standard-indstillinger for en ny server. Alt kan ændres i dashboardet.
 // Pladsholdere i beskeder: {user} {username} {server} {count} {level}
 const DEFAULTS = {
-  developer: { enabled: false, roles: [] },
+  developer: { enabled: false, roles: [], reporterRoles: [] },
   general: {
     adminRoles: [],
     prefix: '!',

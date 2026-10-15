@@ -3,6 +3,15 @@ const { db, settings } = require('../db');
 const {isManager}=require('../access');
 const STATUS = { todo: 'Afventer behandling', doing: 'I gang', done: 'Færdig', rejected: 'Afvist' };
 const parse = r => r && ({ ...r, checklist: JSON.parse(r.checklist || '[]'), attachments: JSON.parse(r.attachments || '[]') });
+async function canReport(guild,uid) {
+  const config=(await settings.get(guild.id)).developer;
+  if(!config.enabled) return false;
+  if(await canManage(guild,uid)) return true;
+  const roles=Array.isArray(config.reporterRoles)?config.reporterRoles:[];
+  if(!roles.length) return true;
+  const member=await guild.members.fetch({user:uid,force:true}).catch(()=>null);
+  return !!member&&roles.some(id=>member.roles.cache.has(id));
+}
 async function get(gid, id) {
   const task = parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id));
   if (task) task.comments = await db.prepare('SELECT * FROM dev_comments WHERE guild_id=? AND task_id=? ORDER BY id DESC LIMIT 100').all(gid,id);
@@ -13,6 +22,7 @@ async function comment(guild,id,uid,text,asDeveloper=false) {
   const task = await get(guild.id,id);
   if(!task) throw new Error('Sagen findes ikke');
   if(asDeveloper ? !await canManage(guild,uid) : task.user_id!==uid) throw new Error('Ingen adgang til sagen');
+  if(!asDeveloper && !await canReport(guild,uid)) throw new Error('Borgerrollen kræves for at sende svar');
   const recent = await db.prepare('SELECT id FROM dev_comments WHERE guild_id=? AND task_id=? AND user_id=? AND created_at>?').get(guild.id,id,uid,Date.now()-5000);
   if(recent) throw new Error('Vent fem sekunder mellem beskeder');
   await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,id,uid,asDeveloper?'developer':'citizen',text.trim(),Date.now());
@@ -99,6 +109,7 @@ async function sendPanel(guild, channelId) {
 async function submit(i, title, description, attachment) {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
   await i.deferReply({ flags: MessageFlags.Ephemeral });
+  if(!await canReport(i.guild,i.user.id)) return i.editReply('Du skal have borgerrollen for at indsende en fejlmelding.');
   const recent = await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>?').get(i.guildId, i.user.id, Date.now() - 60000);
   if (recent) return i.editReply('Vent et minut mellem fejlmeldinger.');
   const task = await create(i.guild, i.user.id, { title, description }, attachment);
@@ -130,4 +141,4 @@ async function onInteraction(i) {
   }
   if (i.customId === 'dev:submit' && i.isModalSubmit()) return submit(i, i.fields.getTextInputValue('title'), i.fields.getTextInputValue('description'));
 }
-module.exports = { STATUS, get, create, update, comment, sync, validate, canManage, sendPanel, onCommand, onInteraction };
+module.exports = { STATUS, get, create, update, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction };

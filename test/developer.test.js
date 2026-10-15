@@ -65,3 +65,20 @@ test('citizens and developers can exchange comments without exposing internal no
     await assert.rejects(developer.comment(guild,task.id,'dev','Spam',true),/fem sekunder/);
   } finally {await db.close();}
 });
+
+test('configured citizen and manager roles grant separate access and removal takes effect',async()=>{
+  await initDb();
+  try {
+    await settings.setModule('guild-a','general',{adminRoles:['owner','leadership','manager']});
+    await settings.setModule('guild-a','developer',{enabled:true,reporterRoles:['citizen']});
+    const assigned=new Set(['citizen']);
+    const guild={id:'guild-a',members:{fetch:async()=>({permissions:{has:()=>false},roles:{cache:{has:id=>assigned.has(id)}}})}};
+    assert.equal(await developer.canReport(guild,'user'),true);
+    assert.equal(await developer.canManage(guild,'user'),false);
+    assigned.clear();
+    assert.equal(await developer.canReport(guild,'user'),false);
+    assigned.add('leadership');
+    assert.equal(await developer.canManage(guild,'user'),true);
+    assert.equal(await developer.canReport(guild,'user'),true);
+  } finally {await db.close();}
+});

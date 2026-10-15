@@ -99,7 +99,7 @@ function field(f, obj) {
 // ---------- Indstillinger pr. modul ----------
 const PH = 'Pladsholdere: {user} {username} {server} {count}';
 const SCHEMA = {
-  developer: [{k:'enabled',l:'Aktivér fejlmeldinger',t:'toggle'},{k:'roles',l:'Udviklerroller',t:'roles'}],
+  developer: [{k:'enabled',l:'Aktivér fejlmeldinger',t:'toggle'},{k:'roles',l:'Udviklerroller',t:'roles'},{k:'reporterRoles',l:'Roller der må sende fejlmeldinger og svar (tom = alle medlemmer)',t:'roles'}],
   general: [{ k: 'prefix', l: 'Prefix til custom commands', ph: '!' },{k:'adminRoles',l:'Roller med adgang til hele dashboardet',t:'roles'}],
   tickets: [
     { k: 'enabled', t: 'toggle', l: 'Tickets slået til' },
