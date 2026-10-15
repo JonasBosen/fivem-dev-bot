@@ -1,9 +1,61 @@
 const {db,settings}=require('../db');
 const {fill}=require('../util');
+const {PermissionFlagsBits:P}=require('discord.js');
 const audit=require('./site-audit');
 const platforms=['twitch','youtube','kick','tiktok'];
 const locks=new Map(),tokens=new Map(),discoveries=new Map();
 let running=false;
+const diagnosticKey=a=>'diagnostic:'+a.platform+':'+a.user_id;
+async function remember(guild,account,state,message){
+  const key=diagnosticKey(account),old=await getState(guild.id,key);
+  const value={state,message,checkedAt:Date.now()};await setState(guild.id,key,value);
+  if(!old||old.state!==state||old.message!==message)await audit.record(guild.id,account.user_id,'stream','stream_check',{platform:account.platform,handle:account.handle,...value});
+  return value;
+}
+async function inspect(guild,p){
+  if(!platforms.includes(p))throw new Error('Ukendt platform');
+  const cfg=(await settings.get(guild.id)).stream.platforms[p],issues=[];
+  if(!cfg.enabled)issues.push('Platformen er slået fra.');
+  if(!cfg.streamerRole||!guild.roles.cache.has(cfg.streamerRole))issues.push('Vælg en eksisterende streamerrolle.');
+  if(!integrationStatus()[p])issues.push(p==='tiktok'?'TikTok bruger manuel start og slut.':'Automatik mangler '+({twitch:'TWITCH_CLIENT_ID og TWITCH_CLIENT_SECRET',youtube:'YOUTUBE_API_KEY',kick:'KICK_CLIENT_ID og KICK_CLIENT_SECRET'}[p])+' på Render.');
+  let deliveryReady=true;
+  const channel=cfg.channel?await guild.channels.fetch(cfg.channel).catch(()=>null):null;
+  const me=guild.members.me||await guild.members.fetchMe();
+  const permissions=channel?.permissionsFor(me);
+  if(!channel?.isTextBased()||!permissions?.has(P.ViewChannel)||!permissions.has(P.SendMessages)){issues.push('Botten mangler adgang til at se og sende i notifikationskanalen.');deliveryReady=false;}
+  if(cfg.pingRole){const role=guild.roles.cache.get(cfg.pingRole);if(!role){issues.push('PING-rollen findes ikke.');deliveryReady=false;}else if(!role.mentionable&&!permissions?.has(P.MentionEveryone)){issues.push('PING-rollen skal kunne nævnes, eller botten skal have tilladelsen Nævn @everyone, @here og alle roller i kanalen.');deliveryReady=false;}}
+  const rows=[];
+  for(const a of (await accounts(guild.id)).filter(a=>a.platform===p)){
+    let memberEligible=false,memberError='';try{memberEligible=await eligible(guild,p,a.user_id);}catch{memberError='Discord-medlemskab kunne ikke kontrolleres.';}
+    rows.push({...a,eligible:memberEligible,error:memberError||(!memberEligible?'Brugeren mangler den valgte streamerrolle.':''),lastCheck:await getState(guild.id,diagnosticKey(a)),active:await getState(guild.id,'account:'+p+':'+a.user_id)});
+  }
+  if(!rows.length)issues.push('Tilknyt mindst én Discord-person og streamkonto.');
+  return {platform:p,credentialsReady:integrationStatus()[p],deliveryReady,issues,accounts:rows};
+}
+async function checkAccount(guild,account,force=false){
+  const p=account.platform,cfg=(await settings.get(guild.id)).stream.platforms[p];
+  try{
+    if(!cfg.enabled){await transition(guild,p,account.user_id,null,true);return remember(guild,account,'disabled','Platformen er slået fra.');}
+    if(!await eligible(guild,p,account.user_id)){await transition(guild,p,account.user_id,null,true);return remember(guild,account,'role_missing','Discord-brugeren mangler streamerrollen.');}
+    if(!integrationStatus()[p])return remember(guild,account,'not_connected',p==='tiktok'?'Manuel start/slut kræves for TikTok.':'Platformens API-oplysninger mangler på Render.');
+    if(force&&p==='youtube')discoveries.delete(account.handle);
+    const previous=await getState(guild.id,'account:'+p+':'+account.user_id),source=await live(p,account.handle,previous);
+    await transition(guild,p,account.user_id,source);
+    return remember(guild,account,source?'live':'offline',source?'Live-status bekræftet. Streambeskeden er registreret i kanalen.':'Platformen melder, at kanalen er offline.');
+  }catch(e){console.warn('[stream]',p,e.message);return remember(guild,account,'error',e.message);}
+}
+async function checkNow(guild,p){
+  if(!platforms.includes(p))throw new Error('Ukendt platform');
+  for(const a of (await accounts(guild.id)).filter(a=>a.platform===p))await checkAccount(guild,a,true);
+  return inspect(guild,p);
+}
+async function testDelivery(guild,p,uid,ping=false){
+  const diagnosis=await inspect(guild,p);if(!diagnosis.deliveryReady)throw new Error(diagnosis.issues.join(' '));
+  const cfg=(await settings.get(guild.id)).stream.platforms[p],channel=await guild.channels.fetch(cfg.channel);
+  const message=await channel.send({content:(ping&&cfg.pingRole?'<@&'+cfg.pingRole+'> ':'')+'🧪 Test af '+p+'-notifikationer. Dette er en testbesked, ikke en livestream.',allowedMentions:{parse:[],roles:ping&&cfg.pingRole?[cfg.pingRole]:[]}});
+  await audit.record(guild.id,uid,'stream','test_notification',{platform:p,ping,messageId:message.id});
+  return {ok:true,messageId:message.id};
+}
 const getState=async(g,k)=>{const row=await db.prepare('SELECT value FROM stream_state WHERE guild_id=? AND key=?').get(g,k);if(!row)return null;try{return JSON.parse(row.value);}catch{return null;}};
 const setState=async(g,k,v)=>v==null?db.prepare('DELETE FROM stream_state WHERE guild_id=? AND key=?').run(g,k):db.prepare('INSERT INTO stream_state (guild_id,key,value) VALUES (?,?,?) ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value').run(g,k,JSON.stringify(v));
 function integrationStatus(){return {twitch:!!(process.env.TWITCH_CLIENT_ID&&process.env.TWITCH_CLIENT_SECRET),youtube:!!process.env.YOUTUBE_API_KEY,kick:!!(process.env.KICK_CLIENT_ID&&process.env.KICK_CLIENT_SECRET),tiktok:false};}
@@ -14,6 +66,7 @@ function validateConfig(input){
     const x=input.platforms[p];if(!x||typeof x.enabled!=='boolean'||typeof x.deleteWhenOffline!=='boolean')throw new Error('Ugyldige indstillinger for '+p);
     for(const key of ['channel','streamerRole','pingRole'])if(typeof x[key]!=='string'||(x[key]&&!/^\d{17,20}$/.test(x[key])))throw new Error('Ugyldigt kanal-/rolle-ID');
     if(typeof x.message!=='string'||!x.message.trim()||x.message.length>1400)throw new Error('Beskeden skal være 1–1400 tegn');
+    if([...x.message.matchAll(/\{([^{}]+)\}/g)].some(m=>!['name','title','game','url'].includes(m[1])))throw new Error('Brug kun {name}, {title}, {game} og {url}. Skriv egne navne og links uden krøllede parenteser.');
     if(x.enabled&&(!x.channel||!x.streamerRole))throw new Error('Vælg kanal og streamerrolle før du aktiverer '+p);
     out.platforms[p]={enabled:x.enabled,channel:x.channel,streamerRole:x.streamerRole,pingRole:x.pingRole,deleteWhenOffline:x.deleteWhenOffline,message:x.message};
   }
@@ -115,13 +168,7 @@ async function transition(guild,p,uid,source,forceDelete=false){
 async function check(client){
   if(running)return;running=true;
   try{for(const guild of client.guilds.cache.values())for(const account of await accounts(guild.id)){
-    try{
-      const p=account.platform,cfg=(await settings.get(guild.id)).stream.platforms[p];
-      if(!cfg.enabled||!await eligible(guild,p,account.user_id)){await transition(guild,p,account.user_id,null,true);continue;}
-      if(!integrationStatus()[p])continue;
-      const previous=await getState(guild.id,'account:'+p+':'+account.user_id);
-      await transition(guild,p,account.user_id,await live(p,account.handle,previous));
-    }catch(e){console.warn('[stream]',account.platform,e.message);}
+    await checkAccount(guild,account);
   }}finally{running=false;}
 }
 async function onCommand(i){
@@ -135,4 +182,4 @@ async function onCommand(i){
   return i.editReply(action==='live'?'Streambeskeden er sendt. Brug /stream slut, når du er færdig.':'Streamen er afsluttet; oprydningsindstillingen er anvendt.');
 }
 function startPolling(client){const run=()=>check(client).catch(e=>console.warn('[stream]',e.message));setTimeout(run,10_000);setInterval(run,120_000);}
-module.exports={startPolling,check,transition,live,accounts,link,unlink,onCommand,validateConfig,normalize,integrationStatus};
+module.exports={startPolling,check,transition,live,accounts,link,unlink,onCommand,validateConfig,normalize,integrationStatus,inspect,checkNow,testDelivery};

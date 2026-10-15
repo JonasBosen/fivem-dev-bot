@@ -37,9 +37,9 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] Logget ind som ${c.user.tag} på ${c.guilds.cache.size} servere`);
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
-  await music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
   giveaways.startTimer(c);
   stream.startPolling(c);
+  music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
 });
 
 client.on(Events.InteractionCreate, async (i) => {

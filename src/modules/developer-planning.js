@@ -1,8 +1,12 @@
 const {db}=require('../db');
-const defaults={position:0,archived:false,reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
+const defaults={scheduledStart:'',scheduledEnd:'',timerStartedAt:0,position:0,archived:false,reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
 function validate(input={}) {
   const out={...defaults};
   for(const key of Object.keys(defaults))if(input[key]!==undefined)out[key]=input[key];
+  for(const key of ['scheduledStart','scheduledEnd'])if(typeof out[key]!=='string'||(out[key]&&(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(out[key])||!Number.isFinite(Date.parse(out[key])))))throw new Error('Vælg en gyldig kalenderdato og tid');
+  if(!!out.scheduledStart!==!!out.scheduledEnd)throw new Error('Vælg både start og slut for aftalen');
+  if(out.scheduledStart&&Date.parse(out.scheduledEnd)<=Date.parse(out.scheduledStart))throw new Error('Sluttid skal ligge efter starttid');
+  if(typeof out.timerStartedAt!=='number'||!Number.isFinite(out.timerStartedAt)||out.timerStartedAt<0||out.timerStartedAt>Date.now()+60000)throw new Error('Ugyldig tidsregistrering');
   if(typeof out.position!=='number'||!Number.isFinite(out.position)||Math.abs(out.position)>1e15)throw new Error('Ugyldig placering');
   if(typeof out.archived!=='boolean')throw new Error('Ugyldigt arkivvalg');
   if(!['bug','feature','optimization','mapping','vehicle','ui','maintenance'].includes(out.kind))throw new Error('Ukendt opgavetype');
