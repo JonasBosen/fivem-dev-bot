@@ -40,7 +40,8 @@ client.once(Events.ClientReady, async (c) => {
   giveaways.startTimer(c);
   stream.startPolling(c);
   require('./modules/community-studios').start(c);
-  require('./modules/report-panel').refreshPanels(c).then(()=>require('./modules/developer-wishes').ensureBesideDeveloperPanel(c)).catch(e=>console.warn('[fejlpanel]',e.message));
+  require('./modules/developer-wishes').ensureBesideDeveloperPanel(c).catch(e=>console.warn('[ønskepanel]',e.code||e.message));
+  require('./modules/report-panel').refreshPanels(c).catch(e=>console.warn('[fejlpanel]',e.message));
   music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
 });
 
