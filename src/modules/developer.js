@@ -13,6 +13,7 @@ async function canReport(guild,uid) {
   return !!member&&roles.some(id=>member.roles.cache.has(id));
 }
 async function get(gid, id) {
+  if(await db.prepare('SELECT task_id FROM dev_deleted WHERE guild_id=? AND task_id=?').get(gid,id)) return undefined;
   const task = parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id));
   if (task) task.comments = await db.prepare('SELECT * FROM dev_comments WHERE guild_id=? AND task_id=? ORDER BY id DESC LIMIT 100').all(gid,id);
   if(task) task.files=await require('./developer-files').list(gid,id);
@@ -27,6 +28,7 @@ async function comment(guild,id,uid,text,asDeveloper=false) {
   const recent = await db.prepare('SELECT id FROM dev_comments WHERE guild_id=? AND task_id=? AND user_id=? AND created_at>?').get(guild.id,id,uid,Date.now()-5000);
   if(recent) throw new Error('Vent fem sekunder mellem beskeder');
   await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,id,uid,asDeveloper?'developer':'citizen',text.trim(),Date.now());
+  await require('./developer-audit').record(guild.id,id,uid,'comment',{author:asDeveloper?'developer':'citizen',text:text.trim()});
   await db.prepare('UPDATE dev_tasks SET updated_at=? WHERE guild_id=? AND id=?').run(Date.now(),guild.id,id);
   const updated = await get(guild.id,id);
   await sync(guild.client,updated);
@@ -69,10 +71,11 @@ async function create(guild, uid, input, attachment) {
   }
   const result = await db.prepare('INSERT INTO dev_tasks (guild_id,user_id,title,description,status,notes,checklist,attachments,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(guild.id, uid, task.title.trim(), task.description, task.status, '', '[]', JSON.stringify(attachment ? [{ url: attachment.url, name: attachment.name }] : []), Date.now(), Date.now());
   if (image) await db.prepare('INSERT INTO dev_images (task_id,guild_id,mime,content) VALUES (?,?,?,?)').run(Number(result.lastInsertRowid),guild.id,image.mime,image.content);
+  await require('./developer-audit').record(guild.id,Number(result.lastInsertRowid),uid,'created',{title:task.title,description:task.description,image:attachment?.name||null});
   return get(guild.id, Number(result.lastInsertRowid));
 }
 function view(task) {
-  const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Status opdateres fra det fælles dashboard' });
+  const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
   if (task.attachments[0]) embed.setImage(task.attachments[0].url);
   const latest = (task.comments || []).slice(0,3).reverse();
   if(latest.length) embed.addFields({name:'Seneste beskeder',value:latest.map(c=>`${c.author_type==='developer'?'Udvikler':'Borger'}: ${c.body.slice(0,270)}`).join('\n\n').slice(0,1024)});
@@ -96,6 +99,7 @@ async function update(guild, id, input, uid) {
   if (!Number.isSafeInteger(input.version)) throw new Error('Version mangler');
   const result = await db.prepare('UPDATE dev_tasks SET title=?,description=?,status=?,notes=?,checklist=?,updated_at=?,version=version+1 WHERE guild_id=? AND id=? AND version=?').run(input.title.trim(), input.description, input.status, input.notes, JSON.stringify(input.checklist), Date.now(), guild.id, id, input.version);
   if (!result.changes) throw new Error('En anden har ændret sagen. Genindlæs før du gemmer.');
+  await require('./developer-audit').record(guild.id,id,uid,input.status==='rejected'?'rejected':'updated',{before:{title:previous.title,description:previous.description,status:previous.status,notes:previous.notes,checklist:previous.checklist},after:{title:input.title,description:input.description,status:input.status,notes:input.notes,checklist:input.checklist}});
   await db.prepare('INSERT INTO dev_history (guild_id,task_id,user_id,status,created_at) VALUES (?,?,?,?,?)').run(guild.id, id, uid, input.status, Date.now());
   await sync(guild.client, await get(guild.id, id));
   return get(guild.id, id);
@@ -118,10 +122,16 @@ async function submit(i, title, description, attachment) {
   try {
     const message = await i.user.send(view(task));
     await db.prepare('UPDATE dev_tasks SET channel_id=?,message_id=? WHERE guild_id=? AND id=?').run(message.channelId, message.id, i.guildId, task.id);
-    await i.editReply(`Fejlmelding #${task.id} er oprettet. Status er sendt i en privat besked. Du kan også bruge /fejlstatus.`);
+    await i.editReply(`Fejlmelding #${task.id} er oprettet. Status er sendt i en privat besked. Du kan også bruge /fejlstatus. Tilføj flere billeder med /fejlbillede id:${task.id} billede:din fil.`);
   } catch { await i.editReply(`Fejlmelding #${task.id} er oprettet. Dine private beskeder er lukkede; følg sagen med /fejlstatus.`); }
 }
 async function onCommand(i) {
+  if(i.commandName==='fejlbillede') {
+    await i.deferReply({flags:MessageFlags.Ephemeral});
+    const id=i.options.getInteger('id');
+    await require('./developer-files').citizenUpload(i.guild,id,i.user.id,i.options.getAttachment('billede'));
+    return i.editReply(`Billedet er gemt på sag #${id}. Udvikleren kan se det under Billeder i sagen.`);
+  }
   if (i.commandName === 'fejlsvar') {
     await i.deferReply({flags:MessageFlags.Ephemeral});
     const task=await comment(i.guild,i.options.getInteger('id'),i.user.id,i.options.getString('besked'));
@@ -142,4 +152,10 @@ async function onInteraction(i) {
   }
   if (i.customId === 'dev:submit' && i.isModalSubmit()) return submit(i, i.fields.getTextInputValue('title'), i.fields.getTextInputValue('description'));
 }
-module.exports = { STATUS, get, create, update, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction };
+async function remove(guild,id,uid) {
+  const task=await get(guild.id,id);
+  if(!task) throw new Error('Sagen findes ikke');
+  await require('./developer-audit').record(guild.id,id,uid,'deleted',{title:task.title,status:task.status,notes:task.notes,checklist:task.checklist,description:task.description});
+  await db.prepare('INSERT INTO dev_deleted (guild_id,task_id,user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(guild_id,task_id) DO NOTHING').run(guild.id,id,uid,Date.now());
+}
+module.exports = { STATUS, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction };
