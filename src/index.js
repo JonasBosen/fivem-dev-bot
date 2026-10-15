@@ -19,6 +19,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,     // privilegeret: slå til i Developer Portal
+    GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,   // privilegeret: slå til i Developer Portal
     GatewayIntentBits.GuildVoiceStates,
@@ -38,6 +39,7 @@ client.once(Events.ClientReady, async (c) => {
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   giveaways.startTimer(c);
+  require('./modules/txadmin').start(c);
   require('./modules/prize-wheel').start(c);
   stream.startPolling(c);
   require('./modules/community-studios').start(c);
@@ -85,6 +87,7 @@ client.on(Events.MessageCreate, async (m) => {
 
 client.on(Events.GuildMemberAdd,m=>{community.onJoin(m).catch(e=>console.warn('[join]',e.message));require('./modules/members-panel').record(m,'joined').catch(e=>console.warn('[medlem]',e.message));});
 client.on(Events.GuildMemberRemove,m=>{community.onLeave(m).catch(()=>{});require('./modules/members-panel').record(m,'left').catch(e=>console.warn('[medlem]',e.message));});
+client.on(Events.GuildAuditLogEntryCreate,(entry,guild)=>require('./modules/members-panel').recordBan(entry,guild).catch(e=>console.warn('[bantidspunkt]',e.code||e.name)));
 
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 

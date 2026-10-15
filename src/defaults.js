@@ -1,6 +1,7 @@
 // Standard-indstillinger for en ny server. Alt kan ændres i dashboardet.
 // Pladsholdere i beskeder: {user} {username} {server} {count} {level}
 const DEFAULTS = {
+  txadmin: require('./modules/txadmin-config').defaults,
   birthdays:{enabled:false,channel:'',time:'08:00',message:'🎉 Tillykke med fødselsdagen {user}{age}! Hele {server} ønsker dig en fantastisk dag! 🎂',birthdayRole:'',showAge:false,mentionMember:true,mediaId:'',imageUrl:'',color:'#e879f9',members:{}},
   slideshow:{enabled:false,channel:'',title:'Dream Network · Highlights',interval:30,color:'#5865f2',slides:[],state:null},
   restart: require('./modules/restart-config').defaults,

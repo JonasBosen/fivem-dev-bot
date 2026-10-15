@@ -213,12 +213,14 @@ function panelCard(type, text) {
 
 // ---------- Sider ----------
 const PAGES = [
+  ['txadmin','🎮','FiveM / txAdmin'],
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
+  async txadmin(){return renderTxAdmin();},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},
@@ -391,6 +393,7 @@ const pages = {
 async function renderGuildList(){location.hash='#/g/'+me.targetGuildId+'/'+(me.access.manager?'overview':'developer');}
 
 async function route() {
+  window.txAdminCleanup?.();window.txAdminCleanup=null;
   window.developerCleanup?.();window.developerCleanup=null;
   clearInterval(pollTimer);
   if(!me?.access?.unlocked)return renderPersonalAccess();

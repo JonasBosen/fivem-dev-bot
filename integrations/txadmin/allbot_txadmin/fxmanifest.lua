@@ -1,0 +1,6 @@
+fx_version 'cerulean'
+game 'gta5'
+server_only 'yes'
+author 'Dream Network'
+description 'Spillerantal og txAdmin-genstarter til det samlede Discord-panel'
+server_script 'server.lua'

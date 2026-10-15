@@ -1,0 +1,23 @@
+FiveM / txAdmin til Dream Networks samlede panel
+
+1. Laeg mappen allbot_txadmin i FiveM-serverens resources-mappe.
+2. Aabn FiveM / txAdmin i hjemmesidens venstremenu.
+3. Vaelg Discord-tekstkanal, aktiver forbindelsen og gem.
+4. Tryk Opret forbindelsesnoegle. Kopier de tre konfigurationslinjer til server.cfg.
+5. Genstart ressourcen, eller start den med ensure allbot_txadmin i serverkonsollen.
+6. Kontroller, at panelet viser kontakt og det rigtige spillerantal inden for et minut.
+
+Brug set til noeglen, aldrig setr eller sets. Noeglen maa kun ligge paa serveren.
+Indsaet IKKE noeglen i Discord Token-feltet i txAdmin.
+Der kraeves ikke txAdmin-brugernavn, adgangskode eller endnu en Discord-bot.
+Ressourcen skal starte automatisk ved hver serverstart.
+
+Spillerantal sendes hvert 30. sekund. Genstartsadvarsler kommer fra txAdmins
+scheduledRestart-haendelser. Planlaeg derfor selve genstarterne i txAdmin.
+En genstart, som txAdmin annullerer, fjernes fra statusbeskeden.
+Hjemmesiden kan ikke starte eller stoppe FiveM-serveren med denne forbindelse.
+Hvis kontakten mangler i mere end 90 sekunder, viser beskeden Ingen forbindelse.
+Det er ikke i sig selv bevis paa, at FiveM-serveren er slukket.
+
+Hvis txAdmins egen Discord-integration allerede sender genstartsvarsler,
+vaelg hvilken integration der skal sende dem, saa borgerne ikke faar dobbelte varsler.
