@@ -13,7 +13,7 @@ async function page(gid,module,before){
   if(!modules.includes(module))throw new Error('Ukendt logkategori');
   const cursor=before===undefined?Number.MAX_SAFE_INTEGER:Number(before);
   if(!Number.isSafeInteger(cursor)||cursor<1)throw new Error('Ugyldig logmarkør');
-  const rows=await db.prepare('SELECT * FROM site_audit WHERE guild_id=? AND module=? AND id<? ORDER BY id DESC LIMIT 100').all(gid,module,cursor);
+  const rows=await db.prepare('SELECT * FROM site_audit WHERE guild_id=? AND module=? AND id<CAST(? AS BIGINT) ORDER BY id DESC LIMIT 100').all(gid,module,cursor);
   return {events:rows.map(r=>({...r,details:JSON.parse(r.details)})),next:rows.length===100?rows.at(-1).id:null};
 }
 module.exports={record,page,modules,clean};

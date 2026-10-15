@@ -155,7 +155,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   // ---------- API ----------
   app.get('/health', (req, res) => res.json({ status: 'ok', databaseReady, botReady: client.isReady() }));
   app.get('/api/setup', (req, res) => res.json({
-    databaseReady, botReady: client.isReady(),
+    databaseReady, botReady: client.isReady(), streamConnections:stream.integrationStatus(),
     loginReady: databaseReady && !!process.env.DISCORD_CLIENT_ID && !!process.env.DISCORD_CLIENT_SECRET,
     callbackUrl: REDIRECT,
     databaseError,
@@ -237,6 +237,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     await audit.record(req.guild.id,req.session.user.id,module,'navigation',{action});
   }));
   app.get('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.accounts(req.guild.id)));
+  app.get('/api/guild/:gid/stream/diagnostics/:platform',auth,guildAccess,wrap(req=>stream.inspect(req.guild,req.params.platform)));
+  app.post('/api/guild/:gid/stream/check/:platform',auth,guildAccess,wrap(req=>stream.checkNow(req.guild,req.params.platform)));
+  app.post('/api/guild/:gid/stream/test/:platform',auth,guildAccess,wrap(req=>stream.testDelivery(req.guild,req.params.platform,req.session.user.id,req.body?.ping===true)));
   app.get('/api/guild/:gid/stream/status',auth,guildAccess,wrap(()=>stream.integrationStatus()));
   app.get('/api/guild/:gid/stream/members',auth,guildAccess,wrap(async req=>{
     const role=String(req.query.role||'');if(!req.guild.roles.cache.has(role))throw new Error('Vælg en streamerrolle');

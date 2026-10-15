@@ -384,6 +384,7 @@ async function renderGuildList() {
 }
 
 async function route() {
+  window.developerCleanup?.();window.developerCleanup=null;
   clearInterval(pollTimer);
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if (!gid) return renderGuildList();

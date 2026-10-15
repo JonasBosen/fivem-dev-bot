@@ -94,6 +94,8 @@ async function create(guild, uid, input, attachment) {
 }
 function view(task) {
   const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, closed: 0x10b981, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
+  if(task.planning?.scheduledStart){const format=new Intl.DateTimeFormat('da-DK',{timeZone:'Europe/Copenhagen',weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});embed.addFields({name:'Planlagt behandling · dansk tid',value:format.format(new Date(task.planning.scheduledStart))+' → '+format.format(new Date(task.planning.scheduledEnd))});}
+  if(task.planning?.priority==='critical')embed.addFields({name:'Prioritet',value:'🔴 Kritisk'});
   const categoryLabel=require('./report-categories').label(task.planning);
   if(categoryLabel)embed.addFields({name:'Kategori',value:categoryLabel});
   if(task.planning?.reportPriority)embed.addFields({name:'Din vurdering af vigtighed',value:({low:'Lav',high:'Vigtig',critical:'Kritisk',custom:task.planning.reportPriorityCustom})[task.planning.reportPriority]||'Ikke angivet'});
