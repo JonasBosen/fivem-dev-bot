@@ -118,12 +118,12 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     } catch { res.status(503).json({error:'Adgang kunne ikke kontrolleres'}); }
   };
   const devAccess=async(req,res,next)=>devRoleAccess(req,res,async()=>{
-    try{if(!req.panelIdentity?.unlocked)return res.status(423).json({error:'Log ind med din personlige kode.'});next();}
+    try{if(!(await require('../modules/developer-gate').status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med den firecifrede kode.'});next();}
     catch{res.status(503).json({error:'Adgangskoden kunne ikke kontrolleres'});}
   });
-  app.get('/api/guild/:gid/developer-access',auth,devRoleAccess,wrap(req=>({configured:true,unlocked:req.panelIdentity.unlocked,canSetup:false})));
+  app.get('/api/guild/:gid/developer-access',auth,devRoleAccess,wrap(req=>require('../modules/developer-gate').status(req.guild,req.session)));
   app.post('/api/guild/:gid/developer-access/:action',auth,devRoleAccess,wrap(async req=>{
-    if(req.params.action==='lock')return personal.lock(req.guild.id,req.session);throw new Error('Brug din personlige kode under Min adgang. Den fælles kode bruges ikke længere.');
+    if(req.params.action==='lock'){delete req.session.devGate;return {ok:true};}if(req.params.action==='unlock')return require('../modules/developer-gate').unlock(req.guild,req.session,req.body.pin,req.ip);throw new Error('Ukendt handling');
   }));
   app.post('/api/guild/:gid/developer/:id/files',auth,devAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/developer-files').upload(req.guild.id,Number(req.params.id),req.session.user.id,req.body)));
   app.get('/api/guild/:gid/developer/:id/files/:fid',auth,devAccess,wrap(async(req,res)=>{
@@ -224,7 +224,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
 
   const protectDeveloperSettings=async(req,res,next)=>{
     if(!['/settings/developer','/panel/developer'].some(s=>req.path.endsWith(s)))return next();
-    if(!req.panelIdentity.developer)return res.status(403).json({error:'Kræver udviklerrolle'});next();
+    return devAccess(req,res,next);
   };
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
     if(req.params.module==='restart')return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
