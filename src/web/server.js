@@ -229,7 +229,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     await fn(req.guild, req.body.channel);
   }));
 
-  app.get('/api/guild/:gid/audit/:module',auth,guildAccess,wrap(async(req,res)=>{if(req.params.module==='developer'&&!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});return audit.page(req.guild.id,req.params.module,req.query.before);}));
+  app.get('/api/guild/:gid/audit/:module',auth,guildAccess,wrap(async(req,res)=>{if(req.params.module!=='developer')return res.status(404).json({error:'Denne log er fjernet'});if(req.params.module==='developer'&&!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});return audit.page(req.guild.id,req.params.module,req.query.before);}));
   app.post('/api/guild/:gid/audit/interaction',auth,devRoleAccess,wrap(async req=>{
     const {module,action}=req.body||{};
     if(!audit.modules.includes(module)||typeof action!=='string'||action.length>100)throw new Error('Ugyldig hændelse');
