@@ -277,10 +277,13 @@ const pages = {
   },
 
   async music() {
+    const botSelect=h('select',{},h('option',{value:''},'Automatisk: brug en ledig musikbot'));
+    const fleetBox=h('div',{class:'card'});
+    let bots=[];
     const box = h('div', { class: 'card' }, h('p', { class: 'muted' }, 'Henter…'));
-    const ctl = (a, v) => run(async () => { await api(`/api/guild/${G.id}/music/${a}`, { method: 'POST', body: { value: v } }); refresh(); });
+    const ctl = (a, v) => run(async () => { await api(`/api/guild/${G.id}/music/${a}`, { method: 'POST', body: { value: v,bot:botSelect.value } }); refresh(); });
     async function refresh() {
-      const s = await api(`/api/guild/${G.id}/music`).catch(() => null);
+      const s = await api(`/api/guild/${G.id}/music?bot=${encodeURIComponent(botSelect.value)}`).catch(() => null);
       if (!s) return;
       if (!s.playing) return box.replaceChildren(h('h2', {}, 'Afspiller'), h('p', { class: 'muted' }, 'Der spilles ikke noget lige nu.'));
       const vol = h('input', { type: 'range', min: 0, max: 150, value: s.volume, onchange: (e) => ctl('volume', e.target.value)() });
@@ -299,18 +302,21 @@ const pages = {
         h('table', { class: 'table' }, h('tbody', {}, s.queue.map((t, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, t.title, h('div', { class: 'muted' }, t.author)), h('td', {}, t.duration),
           h('td', {}, h('button', { class: 'btn sec sm', onclick: ctl('remove', i) }, 'Fjern')))))));
     }
+    async function refreshFleet(){bots=await api(`/api/guild/${G.id}/music/bots`);const previous=botSelect.value;botSelect.replaceChildren(h('option',{value:''},'Automatisk: brug en ledig musikbot'),...bots.map(b=>h('option',{value:b.id},b.name+(b.channelId?' · optaget':' · ledig'))));botSelect.value=previous;}
+    botSelect.addEventListener('change',()=>refresh());
+    await refreshFleet();
     refresh();
-    pollTimer = setInterval(refresh, 5000);
+    pollTimer = setInterval(()=>{refresh();refreshFleet().catch(()=>{});},5000);
     const q = h('input', { placeholder: 'Sangnavn eller link (SoundCloud, Spotify, …)' });
     const vc = h('select', {}, optionList(G.voiceChannels, '🔊 ', '— talekanal —'));
     const tc = h('select', {}, optionList(G.channels, '# ', '— annoncér i kanal (valgfri) —'));
     return [box,
-      h('div', { class: 'card' }, h('h2', {}, 'Afspil fra panelet'), h('div', { class: 'grid' }, q, vc, tc),
+      h('div', { class: 'card' }, h('h2', {}, 'Afspil fra panelet'), h('div', { class: 'grid' }, q, vc, tc,botSelect),
         h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: run(async () => {
-          const r = await api(`/api/guild/${G.id}/music/play`, { method: 'POST', body: { query: q.value, voiceChannel: vc.value, textChannel: tc.value } });
-          toast(`Tilføjet: ${r.title}`); q.value = ''; refresh();
+          const r = await api(`/api/guild/${G.id}/music/play`, { method: 'POST', body: { query: q.value, voiceChannel: vc.value, textChannel: tc.value,bot:botSelect.value } });
+          if(r.botId)botSelect.value=r.botId;toast(`Tilføjet: ${r.title}`); q.value = ''; refresh();
         }) }, '▶ Afspil'))),
-      settingsCard('music', 'Indstillinger')];
+      settingsCard('music', 'Indstillinger'),await renderMusicFleetCard()];
   },
 
   async moderation() {

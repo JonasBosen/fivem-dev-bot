@@ -73,6 +73,7 @@ const DEFAULTS = {
     managerRole: '',
   },
   music: {
+    bots: [],
     enabled: true,
     djRole: '',
     defaultVolume: 60,

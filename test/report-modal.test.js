@@ -1,20 +1,20 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const developer=require('../src/modules/developer');
-test('report button opens modal with optional file upload beside the text fields',async()=>{
-  let payload;
-  await developer.onInteraction({customId:'dev:report',isButton:()=>true,showModal:async modal=>{payload=modal.toJSON();}});
-  assert.equal(payload.custom_id,'dev:submit');
-  assert.equal(payload.components.length,5);
-  const upload=payload.components.find(c=>c.component?.custom_id==='image');
-  assert.ok(upload);
-  assert.equal(upload.component.type,19);
-  assert.equal(upload.component.required,false);
-  assert.equal(upload.component.max_values,1);
-  assert.deepEqual(payload.components.slice(0,2).map(c=>c.component.custom_id),['title','description']);
-  const category=payload.components.find(c=>c.component?.custom_id==='category').component;
-  assert.equal(category.options.length,25);
-  assert.ok(category.options.some(o=>o.value==='mlo'));
-  assert.ok(category.options.some(o=>o.value==='other'));
-  assert.ok(payload.components.some(c=>c.component?.custom_id==='custom_category'));
+const form=require('../src/modules/report-form');
+test('report wizard offers categories and importance before a modal with custom fields and image',async()=>{
+  let response;
+  await form.begin({user:{id:'citizen'},guildId:'guild',reply:async p=>response=p});
+  assert.equal(response.components[0].toJSON().components[0].options.length,25);
+  assert.equal(response.components[1].toJSON().components[0].options.length,4);
+  for(const [category,priority]of [['mlo','critical'],['other','custom']]){
+    const modal=form.modal(category,priority).toJSON();
+    assert.ok(modal.components.length<=5);
+    const upload=modal.components.find(c=>c.component?.custom_id==='image').component;
+    assert.equal(upload.type,19);assert.equal(upload.required,false);
+    if(category==='other')assert.equal(modal.components.find(c=>c.component?.custom_id==='custom_category').component.required,true);
+    if(priority==='custom')assert.equal(modal.components.find(c=>c.component?.custom_id==='custom_priority').component.required,true);
+  }
+  assert.equal(form.importance('critical').priority,'critical');
+  assert.equal(form.importance('custom','Det blokerer mit job').reportPriorityCustom,'Det blokerer mit job');
+  assert.throws(()=>form.importance('custom',''),/Beskriv/);
 });

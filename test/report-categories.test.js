@@ -8,9 +8,11 @@ test('citizen categories and custom text persist on developer cases and audit en
   await initDb();
   try{
     const guild={id:'guild-a'};
-    const mlo=await developer.create(guild,'citizen',{title:'Dør mangler',description:'Politistation',reportCategory:'mlo'});
+    const mlo=await developer.create(guild,'citizen',{title:'Dør mangler',description:'Politistation',reportCategory:'mlo',reportPriority:'critical'});
     assert.equal(mlo.planning.reportCategory,'mlo');assert.equal(mlo.planning.kind,'mapping');
     assert.equal(catalog.label(mlo.planning),'MLO / interiør');
+    assert.equal(mlo.planning.priority,'critical');
+    assert.equal(mlo.planning.reportPriority,'critical');
     const custom=await developer.create(guild,'citizen',{title:'Egen sag',description:'Beskrivelse',reportCategory:'other',reportCategoryCustom:'Minigolf på havnen'});
     assert.equal(catalog.label(custom.planning),'Minigolf på havnen');
     const audit=await require('../src/modules/developer-audit').list(guild.id);

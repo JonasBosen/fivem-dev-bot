@@ -7,6 +7,7 @@ const { MessageFlags } = require('discord.js');
 const { settings } = require('../db');
 const { embed, isAdmin, hasAnyRole } = require('../util');
 
+function createMusicService() {
 const EPH = { flags: MessageFlags.Ephemeral };
 let player;
 
@@ -118,4 +119,6 @@ async function onCommand(interaction) {
   }
 }
 
-module.exports = { init, play, state, control, onCommand };
+return { init, play, state, control, onCommand };
+}
+module.exports = { ...createMusicService(), createMusicService };

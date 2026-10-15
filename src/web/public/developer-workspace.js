@@ -19,9 +19,9 @@ async function renderDeveloperWorkspace() {
   window.addEventListener('hashchange',hashChanged);
   function canLeave(){return !dirty||window.confirm('Du har ændringer, der ikke er gemt. Vil du forlade opgaven?');}
   function draw(){
-    counts.replaceChildren(...['todo','doing','done'].map(s=>h('span',{class:`work-count status-${s}`},String(tasks.filter(t=>t.status===s).length),h('small',{},states[s]))));
     const active=tasks.filter(t=>!['done','closed','rejected'].includes(t.status));
-    counts.append(h('span',{class:'work-count status-doing'},active.filter(t=>t.planning?.priority==='critical').length,h('small',{},'Kritiske åbne')),h('span',{class:'work-count status-todo'},tasks.reduce((n,t)=>n+(t.planning?.spentHours||0),0).toFixed(1)+' t',h('small',{},'Registreret tid')));
+    const metric=(value,label,state)=>h('span',{class:'work-count status-'+state},value,h('small',{},label));
+    counts.replaceChildren(metric(tasks.filter(t=>t.status==='todo').length,'Ikke taget','todo'),metric(tasks.filter(t=>t.status==='doing').length,'Taget · I gang','doing'),metric(active.filter(t=>t.planning?.priority==='critical').length,'Kritiske åbne','critical'),metric(tasks.filter(t=>t.status==='done').length,'Færdig','done'),metric(tasks.reduce((n,t)=>n+(t.planning?.spentHours||0),0).toFixed(1)+' t','Registreret tid','todo'));
     const query=search.value.trim().toLowerCase();
     board.replaceChildren(...Object.entries(states).map(([state,label])=>{
       const items=tasks.filter(t=>t.status===state&&(!priorityFilter.value||t.planning?.priority===priorityFilter.value)&&(!typeFilter.value||t.planning?.kind===typeFilter.value)&&(!categoryFilter.value||t.planning?.reportCategory===categoryFilter.value)&&`${t.id} ${t.title} ${t.description} ${t.planning?.resource||''} ${t.planning?.assignee||''} ${reportLabel(t.planning)}`.toLowerCase().includes(query));
@@ -96,7 +96,7 @@ async function renderDeveloperWorkspace() {
     const tabs=h('div',{class:'work-tabs'}),content=h('div');
     const panels={
       work:h('div',{},fields,notes,h('h3',{},'Tjekliste'),progress,checklist,h('div',{class:'actions'},newItem,h('button',{class:'btn sec',onclick:addItem},'Tilføj punkt'))),
-      planning:h('div',{},h('h3',{},'Planlægning og tidsregistrering'),planFields,technical),
+      planning:h('div',{},h('h3',{},'Planlægning og tidsregistrering'),h('p',{class:'muted'},'Borgerens vurdering: '+({low:'Lav',high:'Vigtig',critical:'Kritisk',custom:planning.reportPriorityCustom}[planning.reportPriority]||'Ikke angivet')),planFields,technical),
       images:h('div',{},h('h3',{},'Billeder og dokumentation'),h('p',{class:'muted'},'Billeder fra Discord og dine egne uploads samles her. PNG, JPG, GIF eller WebP · højst 6 MB pr. billede.'),gallery,h('button',{class:'btn sec',onclick:run(async()=>drawFiles((await api(`${base}/${id}`)).files||[]))},'Hent nye billeder'),h('div',{class:'actions'},upload,uploadButton)),
       conversation:h('div',{},h('h3',{},'Samtale med borgeren'),conversation,reply,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{const saved=await api(`${base}/${id}/comments`,{method:'POST',body:{text:reply.value}});drawComments(saved.comments||[]);reply.value='';toast(saved.sync_error||'Svar sendt');})},'Send svar'),h('button',{class:'btn sec',onclick:run(async()=>{drawComments((await api(`${base}/${id}`)).comments||[]);})},'Hent nye beskeder')))
     };
