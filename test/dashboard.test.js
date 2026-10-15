@@ -1,65 +1,9 @@
-const {test}=require('node:test');
-const assert=require('node:assert/strict');
-process.env.DB_FILE=':memory:';
-process.env.BASE_URL='http://localhost:3999';
-process.env.DISCORD_CLIENT_ID='test-app';
-process.env.DISCORD_CLIENT_SECRET='test-secret';
-const {initDb,db,settings}=require('../src/db');
-const {startWeb}=require('../src/web/server');
-test('shared dashboard admits developers but protects administrator APIs and rejects forged requests',async()=>{
-  await initDb();
-  await settings.setModule('guild-a','developer',{enabled:true,roles:['developer']});
-  let role=true;
-  const guild={id:'guild-a',name:'Test',icon:null,memberCount:1,iconURL:()=>null,channels:{cache:new Map()},members:{fetch:async()=>({permissions:{has:()=>false},roles:{cache:{has:id=>role&&id==='developer'}}})}};
-  const client={guilds:{cache:new Map([['guild-a',guild]])},isReady:()=>true,user:{id:'bot'}};
-  guild.client=client;
-  const server=startWeb(client,{listen:false}).listen(0,'127.0.0.1');
-  await new Promise(resolve=>server.once('listening',resolve));
-  const base='http://127.0.0.1:'+server.address().port;
-  const nativeFetch=global.fetch;
-  global.fetch=async(url,opts)=>{
-    if(String(url).endsWith('/oauth2/token')) return Response.json({access_token:'test'});
-    if(String(url).endsWith('/users/@me')) return Response.json({id:'developer-user',username:'Dev'});
-    if(String(url).endsWith('/users/@me/guilds')) return Response.json([]);
-    return nativeFetch(url,opts);
-  };
-  try {
-    assert.equal((await fetch(base+'/api/guild/guild-a/developer')).status,401);
-    assert.equal((await fetch(base+'/auth/callback?code=forged')).status,400);
-    const login=await fetch(base+'/login',{redirect:'manual'});
-    const cookie=login.headers.get('set-cookie').split(';')[0];
-    const state=new URL(login.headers.get('location')).searchParams.get('state');
-    const callback=await fetch(base+'/auth/callback?code=test&state='+state,{headers:{cookie},redirect:'manual'});
-    assert.equal(callback.status,302);
-    const headers={cookie:callback.headers.get('set-cookie').split(';')[0]};
-    const me=await (await fetch(base+'/api/me',{headers})).json();
-    assert.equal(me.guilds[0].id,'guild-a');
-    assert.equal((await (await fetch(base+'/api/guild/guild-a',{headers})).json()).developerOnly,true);
-    assert.equal((await fetch(base+'/api/guild/guild-a/tickets',{headers})).status,403);
-    assert.equal((await fetch(base+'/api/guild/guild-b/developer',{headers})).status,403);
-    assert.equal((await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:'https://evil.example','Content-Type':'application/json'},body:'{}'})).status,403);
-    assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,423);
-    assert.equal((await fetch(base+'/api/guild/guild-a/developer-access/setup',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({pin:'6428'})})).status,400);
-    guild.ownerId='developer-user';
-    assert.equal((await fetch(base+'/api/guild/guild-a/developer-access/setup',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({pin:'6428'})})).status,200);
-    const created=await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({title:'Test task',description:'Description'})});
-    assert.equal(created.status,200);
-    const task=await created.json();
-    assert.equal(task.status,'todo');
-    const image={name:'fejl.png',data:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7XcAAAAASUVORK5CYII='};
-    const uploaded=await fetch(base+'/api/guild/guild-a/developer/'+task.id+'/files',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify(image)});
-    assert.equal(uploaded.status,200);
-    const images=await uploaded.json();
-    const imageUrl='/api/guild/guild-a/developer/'+task.id+'/files/'+images[0].id;
-    const imageResponse=await fetch(base+imageUrl,{headers});
-    assert.equal(imageResponse.status,200);
-    assert.equal(imageResponse.headers.get('content-type'),'image/png');
-    assert.equal((await fetch(base+imageUrl)).status,401);
-    role=false;
-    assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,403);
-  } finally {
-    global.fetch=nativeFetch;
-    await new Promise(resolve=>server.close(resolve));
-    await db.close();
-  }
+const {test}=require('node:test'),assert=require('node:assert/strict');process.env.DB_FILE=':memory:';process.env.MAIN_GUILD_ID='guild-a';process.env.BASE_URL='http://localhost:3999';process.env.DISCORD_CLIENT_ID='test-app';process.env.DISCORD_CLIENT_SECRET='test-secret';const {initDb,db,settings}=require('../src/db'),personal=require('../src/modules/personal-access'),{startWeb}=require('../src/web/server');
+test('Discord identity, bound one-use invitation and personal code protect the fixed-server dashboard; administrators still need developer rank',async()=>{
+ await initDb();await settings.setModule('guild-a','developer',{enabled:true,roles:['developer']});let role=true,administrator=false;const guild={id:'guild-a',ownerId:'owner',name:'Test',iconURL:()=>null,memberCount:1,channels:{cache:new Map()},members:{fetch:async()=>({permissions:{has:()=>administrator},roles:{cache:{has:id=>role&&id==='developer'}}})}};const client={guilds:{cache:new Map([['guild-a',guild]])},isReady:()=>true,user:{id:'bot'}};guild.client=client;const server=startWeb(client,{listen:false}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port,nativeFetch=global.fetch;global.fetch=async(url,opts)=>String(url).endsWith('/oauth2/token')?Response.json({access_token:'test'}):String(url).endsWith('/users/@me')?Response.json({id:'developer-user',username:'Dev'}):nativeFetch(url,opts);
+ try{assert.equal((await fetch(base+'/api/guild/guild-a/developer')).status,401);assert.equal((await fetch(base+'/auth/callback?code=forged')).status,400);const login=await fetch(base+'/login',{redirect:'manual'}),firstCookie=login.headers.get('set-cookie').split(';')[0],location=new URL(login.headers.get('location'));assert.equal(location.searchParams.get('scope'),'identify');const callback=await fetch(base+'/auth/callback?code=test&state='+location.searchParams.get('state'),{headers:{cookie:firstCookie},redirect:'manual'});assert.equal(callback.status,302);const headers={cookie:callback.headers.get('set-cookie').split(';')[0]},post=(url,body)=>fetch(base+url,{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify(body)});const me=await(await fetch(base+'/api/me',{headers})).json();assert.equal(me.targetGuildId,'guild-a');assert.equal(me.guilds,undefined);assert.equal(me.access.unlocked,false);assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,428);
+ const invite=await personal.issue(guild,'owner','developer-user');assert.equal((await post('/api/access/check-invite',{code:invite.code})).status,200);assert.equal((await post('/api/access/activate',{code:invite.code,password:'new-code',confirm:'different'})).status,400);assert.equal((await post('/api/access/activate',{code:invite.code,password:'new-code',confirm:'new-code'})).status,200);assert.equal((await(await fetch(base+'/api/guild/guild-a',{headers})).json()).developerOnly,true);assert.equal((await fetch(base+'/api/access/users',{headers})).status,403);assert.equal((await fetch(base+'/api/guild/guild-a/tickets',{headers})).status,403);assert.equal((await fetch(base+'/api/guild/guild-b/developer',{headers})).status,403);
+ assert.equal((await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:'https://evil.example','Content-Type':'application/json'},body:'{}'})).status,403);const created=await post('/api/guild/guild-a/developer',{title:'Test task',description:'Description'});assert.equal(created.status,200);const task=await created.json();const image={name:'fejl.png',data:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7XcAAAAASUVORK5CYII='};const uploaded=await post('/api/guild/guild-a/developer/'+task.id+'/files',image);assert.equal(uploaded.status,200);const imageId=(await uploaded.json())[0].id;assert.equal((await fetch(base+'/api/guild/guild-a/developer/'+task.id+'/files/'+imageId,{headers})).status,200);
+ role=false;administrator=true;assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,403);assert.equal((await(await fetch(base+'/api/access/status',{headers})).json()).unlocked,true);administrator=false;assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,403);role=true;await post('/api/access/lock',{});assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,428);assert.equal((await post('/api/access/unlock',{password:'new-code'})).status,200);assert.equal((await post('/api/access/check-invite',{code:invite.code})).status,400);
+ }finally{global.fetch=nativeFetch;await new Promise(r=>server.close(r));await db.close();}
 });

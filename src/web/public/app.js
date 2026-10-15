@@ -18,6 +18,7 @@ function h(tag, attrs = {}, ...kids) {
 }
 async function api(path, opts = {}) {
   const r = await fetch(path, { method: opts.method || 'GET',keepalive:!!opts.keepalive, headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if(r.status===428){if(me?.access)me.access.unlocked=false;queueMicrotask(()=>route());throw new Error('Lås op med din personlige kode');}
   if (r.status === 401) { location.href = '/login'; throw new Error('Log ind'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {const error=new Error(j.error || `Fejl ${r.status}`);error.status=r.status;throw error;}
@@ -214,10 +215,11 @@ function panelCard(type, text) {
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],
+  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
+  async account(){return renderMyAccess();},
   async appearance(){return renderAppearance();},
 
   async developer() { return renderDeveloperWorkspace(); },
@@ -384,40 +386,33 @@ const pages = {
 };
 
 // ---------- Visning ----------
-async function renderGuildList() {
-  $app.replaceChildren(h('div', { style: 'padding:40px 0 20px;text-align:center' },
-    h('h1', {}, `Hej ${me.user.username} 👋`), h('p', { class: 'muted' }, 'Vælg en server at styre'),
-    !me.botReady && h('p', { style: 'color:var(--warn)' }, 'Botten er ikke online (tjek DISCORD_TOKEN).'),
-    h('a', { href: '/logout', class: 'muted' }, 'Log ud')),
-  h('div', { class: 'guilds' }, me.guilds.length ? me.guilds.map((g) => h('div', { class: 'gcard' }, icon(g), h('b', {}, g.name),
-    g.botIn ? h('a', { class: 'btn', href: `#/g/${g.id}/overview` }, 'Åbn panel')
-      : me.invite && h('a', { class: 'btn sec', href: `${me.invite}&guild_id=${g.id}`, target: '_blank' }, 'Tilføj bot')))
-    : h('p', { class: 'muted' }, 'Du har ingen servere hvor du har "Administrer server".')));
-}
+async function renderGuildList(){location.hash='#/g/'+me.targetGuildId+'/'+(me.access.manager?'overview':'developer');}
 
 async function route() {
   window.developerCleanup?.();window.developerCleanup=null;
   clearInterval(pollTimer);
+  if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
+  if(gid&&page==='developer'&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='restart'){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){sessionStorage.setItem('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
-  if (!gid) return renderGuildList();
+  if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
     if (!G || G.id !== gid) G = await api(`/api/guild/${gid}`);
   } catch (e) { toast(e.message, true); location.hash = ''; return; }
-  if (G.developerOnly && page !== 'developer') { location.hash = '#/g/'+gid+'/developer'; return; }
+  if (G.developerOnly && !['developer','account'].includes(page)) { location.hash = '#/g/'+gid+'/developer'; return; }
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
-    orderedPages().filter(p=>!G.developerOnly || p[0]==='developer').map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
-    h('div', { class: 'foot' }, h('a', { href: '#' }, '← Skift server'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
+    orderedPages().filter(p=>(!G.developerOnly||['developer','account'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
+    h('div', { class: 'foot' }, h('a', { href: '#/g/'+gid+'/account' }, 'Min adgang'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
   const main = h('main', {}, h('div', { class: 'top' },
     h('button', { class: 'btn sec menu-btn', onclick: () => side.classList.toggle('open') }, '☰'),
     h('h1', {}, PAGES.find((p) => p[0] === page)?.[2] || ''), h('span')), h('p', { class: 'muted' }, 'Indlæser…'));
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(['developer','stream','appearance','logs','applications','custom','restart'].includes(page)?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','stream','appearance','logs','applications','custom','restart','account'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
