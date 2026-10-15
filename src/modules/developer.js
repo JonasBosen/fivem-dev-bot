@@ -86,12 +86,17 @@ async function create(guild, uid, input, attachment) {
   }
   const result = await db.prepare('INSERT INTO dev_tasks (guild_id,user_id,title,description,status,notes,checklist,attachments,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(guild.id, uid, task.title.trim(), task.description, task.status, '', '[]', JSON.stringify(attachment ? [{ url: attachment.url, name: attachment.name }] : []), Date.now(), Date.now());
   if (image) await db.prepare('INSERT INTO dev_images (task_id,guild_id,mime,content) VALUES (?,?,?,?)').run(Number(result.lastInsertRowid),guild.id,image.mime,image.content);
-  if(category||importance) await require('./developer-planning').save(guild.id,Number(result.lastInsertRowid),{...require('./developer-planning').defaults,...category,...importance});
+  const reporter=await guild.client?.users?.fetch?.(uid).catch(()=>null);
+  const reporterName=reporter?.globalName||reporter?.username||uid;
+  await require('./developer-planning').save(guild.id,Number(result.lastInsertRowid),{...require('./developer-planning').defaults,reporterName,...category,...importance,reportType:input.reportType==='request'?'request':'bug',kind:input.reportType==='request'?'feature':category?.kind||'bug'});
   await require('./developer-audit').record(guild.id,Number(result.lastInsertRowid),uid,'created',{title:task.title,description:task.description,image:attachment?.name||null,category,importance});
   return get(guild.id, Number(result.lastInsertRowid));
 }
 function view(task) {
   const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, closed: 0x10b981, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
+  if(task.planning?.reportType==='request')embed.addFields({name:'Sagstype',value:'💡 Ønske til serveren'});
+  embed.addFields({name:'Oprettet af',value:((task.planning?.reporterName||task.user_id)+' · <@'+task.user_id+'>').slice(0,1024)});
+  if(task.planning?.developers?.length)embed.addFields({name:'Ansvarlige udviklere',value:task.planning.developers.map(d=>d.name+' · <@'+d.id+'>').join('\n').slice(0,1024)});
   if(task.planning?.scheduledStart){const format=new Intl.DateTimeFormat('da-DK',{timeZone:'Europe/Copenhagen',weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});embed.addFields({name:'Planlagt behandling · dansk tid',value:format.format(new Date(task.planning.scheduledStart))+' → '+format.format(new Date(task.planning.scheduledEnd))});}
   const priorityStyle={low:{label:'🟢 Lav',color:0x22c55e},high:{label:'🟠 Mellem / vigtig',color:0xf59e0b},critical:{label:'🔴 Kritisk',color:0xef4444}}[task.planning?.priority];
   if(priorityStyle){embed.addFields({name:'Valgt prioritet',value:priorityStyle.label});if(task.status==='todo')embed.setColor(priorityStyle.color);}
@@ -120,6 +125,10 @@ async function update(guild, id, input, uid) {
   const previous = await get(guild.id, id);
   if (!previous) throw new Error('Sagen findes ikke');
   const planning=require('./developer-planning').validate(input.planning||previous.planning);
+  if(planning.columnId&&input.status!==previous.status){const columns=await require('./developer-board').get(guild.id);if(columns.find(c=>c.id===planning.columnId)?.status!==input.status)planning.columnId='';}
+  const reporter=await guild.client?.users?.fetch?.(previous.user_id).catch(()=>null);planning.reporterName=reporter?.globalName||reporter?.username||previous.planning.reporterName||previous.user_id;
+  if(input.status==='doing'&&previous.status!=='doing'&&!planning.developers.some(d=>d.id===uid)){if(planning.developers.length>=20)throw new Error('Der er allerede tilknyttet 20 udviklere');planning.developers.push({id:uid,name:uid});}
+  for(const assigned of planning.developers){if(!previous.planning.developers?.some(d=>d.id===assigned.id)&&assigned.id!==uid&&!await canManage(guild,assigned.id))throw new Error('Den valgte person har ikke udvikleradgang');const user=await guild.client?.users?.fetch?.(assigned.id).catch(()=>null);assigned.name=user?.globalName||user?.username||assigned.name||assigned.id;}
   if (!Number.isSafeInteger(input.version)) throw new Error('Version mangler');
   const result = await db.prepare('UPDATE dev_tasks SET title=?,description=?,status=?,notes=?,checklist=?,updated_at=?,version=version+1 WHERE guild_id=? AND id=? AND version=?').run(input.title.trim(), input.description, input.status, input.notes, JSON.stringify(input.checklist), Date.now(), guild.id, id, input.version);
   if (!result.changes) throw new Error('En anden har ændret sagen. Genindlæs før du gemmer.');
@@ -136,19 +145,19 @@ async function sendPanel(guild, channelId) {
   if (!channel?.isTextBased()) throw new Error('Vælg en tekstkanal');
   await channel.send(require('./report-panel').panel(config.reportPanel));
 }
-async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='') {
+async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='',reportType='bug') {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
   await i.deferReply({ flags: MessageFlags.Ephemeral });
   if(!await canReport(i.guild,i.user.id)) return i.editReply('Du skal have borgerrollen for at indsende en fejlmelding.');
   const recent = await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>?').get(i.guildId, i.user.id, Date.now() - 60000);
   if (recent) return i.editReply('Vent et minut mellem fejlmeldinger.');
   const category=require('./report-categories').normalize(categoryId,customCategory);
-  const task = await create(i.guild, i.user.id, { title, description,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
+  const task = await create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
   // A normal DM remains editable after Discord interaction tokens expire.
   try {
     const message = await i.user.send(view(task));
     await db.prepare('UPDATE dev_tasks SET channel_id=?,message_id=? WHERE guild_id=? AND id=?').run(message.channelId, message.id, i.guildId, task.id);
-    await i.editReply(`Fejlmelding #${task.id} er oprettet. Status er sendt i en privat besked. Du kan også bruge /fejlstatus. Tilføj flere billeder med /fejlbillede id:${task.id} billede:din fil.`);
+    await i.editReply(`Sag #${task.id} er oprettet. Status er sendt i en privat besked. Du kan også bruge /fejlstatus. Tilføj flere billeder med /fejlbillede id:${task.id} billede:din fil.`);
   } catch { await i.editReply(`Fejlmelding #${task.id} er oprettet. Dine private beskeder er lukkede; følg sagen med /fejlstatus.`); }
 }
 async function onCommand(i) {
@@ -171,12 +180,13 @@ async function onCommand(i) {
   return submit(i, i.options.getString('titel'), i.options.getString('beskrivelse'), i.options.getAttachment('billede'),i.options.getString('kategori')||'bug',i.options.getString('andet')||'',i.options.getString('vigtighed')||'low',i.options.getString('egen_vigtighed')||'');
 }
 async function onInteraction(i) {
+  if(/^dev:wish(?::|category)/.test(i.customId))return require('./developer-wishes').onInteraction(i);
   if(i.customId==='dev:report'&&i.isButton())return i.reply(require('./report-panel').categoryMenu());
   if(/^dev:(custom|category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
   if(/^dev:(pickcategory|pickpriority|continue):/.test(i.customId))return require('./report-form').interact(i);
   if(i.customId.startsWith('dev:submit')&&i.isModalSubmit()){
-    const [, ,category='bug',priority='low']=i.customId.split(':');
-    return submit(i,i.fields.getTextInputValue('title'),i.fields.getTextInputValue('description'),i.fields.fields.has('image')?i.fields.getUploadedFiles('image')?.first():undefined,category,i.fields.fields.has('custom_category')?i.fields.getTextInputValue('custom_category'):'',priority,i.fields.fields.has('custom_priority')?i.fields.getTextInputValue('custom_priority'):'');
+    const [, ,category='bug',priority='low',reportType='bug']=i.customId.split(':');
+    return submit(i,i.fields.getTextInputValue('title'),i.fields.getTextInputValue('description'),i.fields.fields.has('image')?i.fields.getUploadedFiles('image')?.first():undefined,category,i.fields.fields.has('custom_category')?i.fields.getTextInputValue('custom_category'):'',priority,i.fields.fields.has('custom_priority')?i.fields.getTextInputValue('custom_priority'):'',reportType);
   }
 }
 async function remove(guild,id,uid) {
@@ -185,4 +195,4 @@ async function remove(guild,id,uid) {
   await require('./developer-audit').record(guild.id,id,uid,'deleted',{title:task.title,status:task.status,notes:task.notes,checklist:task.checklist,description:task.description,planning:task.planning});
   await db.prepare('INSERT INTO dev_deleted (guild_id,task_id,user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(guild_id,task_id) DO NOTHING').run(guild.id,id,uid,Date.now());
 }
-module.exports = { STATUS, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction,onDirectReply,replyComponents };
+module.exports = { STATUS,view, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction,onDirectReply,replyComponents };

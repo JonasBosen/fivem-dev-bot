@@ -26,6 +26,7 @@ const client = new Client({
 });
 
 const commandRoutes = {
+  fødselsdag:require('./modules/community-studios'),
   stream,
   fejlbillede: developer, fejlsvar: developer, fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
   rank: community, leaderboard: community,
@@ -39,6 +40,7 @@ client.once(Events.ClientReady, async (c) => {
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   giveaways.startTimer(c);
   stream.startPolling(c);
+  require('./modules/community-studios').start(c);
   require('./modules/report-panel').refreshPanels(c).catch(e=>console.warn('[fejlpanel]',e.message));
   music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
 });
@@ -57,6 +59,7 @@ client.on(Events.InteractionCreate, async (i) => {
       if (mod) return await mod.onCommand(i);
     }
     const id = i.customId || '';
+    if(id.startsWith('birthday:'))return await require('./modules/community-studios').onInteraction(i);
     if (id.startsWith('dev:')) return await developer.onInteraction(i);
     if (id.startsWith('ticket:')) return await tickets.onInteraction(i);
     if (id.startsWith('app:')) return await applications.onInteraction(i);

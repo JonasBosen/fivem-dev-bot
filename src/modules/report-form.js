@@ -9,9 +9,9 @@ function importance(id,custom=''){
   if(id==='custom'&&!custom.trim())throw new Error('Beskriv din egen vurdering af vigtigheden');
   return {priority:id==='custom'?'normal':id,reportPriority:id,reportPriorityCustom:id==='custom'?custom.trim():''};
 }
-function modal(category,priority){
-  const result=new ModalBuilder().setCustomId(`dev:submit:${category}:${priority}`).setTitle('Indmeld en sag');
-  for(const [id,label,max,style]of [['title','Kort titel',200,TextInputStyle.Short],['description','Beskriv sagen og hvordan den genskabes',4000,TextInputStyle.Paragraph]])result.addLabelComponents(new LabelBuilder().setLabel(label).setTextInputComponent(new TextInputBuilder().setCustomId(id).setMaxLength(max).setStyle(style).setRequired(true)));
+function modal(category,priority,reportType='bug'){
+  const result=new ModalBuilder().setCustomId(`dev:submit:${category}:${priority}`+(reportType==='request'?':request':'')).setTitle(reportType==='request'?'Indsend et ønske til serveren':'Indmeld en sag');
+  for(const [id,label,max,style]of [['title','Kort titel',200,TextInputStyle.Short],['description','Beskriv sagen og hvordan den genskabes',4000,TextInputStyle.Paragraph]])result.addLabelComponents(new LabelBuilder().setLabel(reportType==='request'&&id==='description'?'Beskriv ønsket og hvad det vil bidrage med':label).setTextInputComponent(new TextInputBuilder().setCustomId(id).setMaxLength(max).setStyle(style).setRequired(true)));
   result.addLabelComponents(new LabelBuilder().setLabel('Vedhæft billede (valgfrit)').setDescription('PNG, JPG, GIF eller WebP · højst 6 MB').setFileUploadComponent(new FileUploadBuilder().setCustomId('image').setMinValues(0).setMaxValues(1).setRequired(false)));
   if(category==='other')result.addLabelComponents(new LabelBuilder().setLabel('Din egen kategori').setTextInputComponent(new TextInputBuilder().setCustomId('custom_category').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true)));
   if(priority==='custom')result.addLabelComponents(new LabelBuilder().setLabel('Hvor vigtig mener du, at sagen er?').setTextInputComponent(new TextInputBuilder().setCustomId('custom_priority').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true)));

@@ -8,10 +8,9 @@ const EPH = { flags: MessageFlags.Ephemeral };
 
 async function sendPanel(guild, channelId) {
   const cfg = (await settings.get(guild.id)).applications;
-  const forms = cfg.forms.slice(0, 5);
-  const row = new ActionRowBuilder().addComponents(forms.map((f) =>
-    new ButtonBuilder().setCustomId(`app:start:${f.id}`).setLabel(`Ansøg: ${f.name}`.slice(0, 80)).setStyle(ButtonStyle.Primary)));
-  const msg = await sendTo(guild, channelId, { embeds: [embed(cfg.panelTitle, cfg.panelText)], components: forms.length ? [row] : [] });
+  const forms=cfg.forms.filter(f=>f.enabled!==false).slice(0,25),rows=[];
+  forms.forEach((f,i)=>{if(i%5===0)rows.push(new ActionRowBuilder());const button=new ButtonBuilder().setCustomId('app:start:'+f.id).setLabel((f.buttonLabel||'Ansøg: '+f.name).slice(0,80)).setStyle({blue:ButtonStyle.Primary,green:ButtonStyle.Success,red:ButtonStyle.Danger,gray:ButtonStyle.Secondary}[f.color]||ButtonStyle.Primary);if(f.emoji)button.setEmoji(f.emoji);rows.at(-1).addComponents(button);});
+  const msg=await sendTo(guild,channelId,await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),{components:rows}));
   if (!msg) throw new Error('Kunne ikke sende panelet – tjek kanal og rettigheder.');
   return msg;
 }
@@ -19,7 +18,9 @@ async function sendPanel(guild, channelId) {
 async function showForm(interaction, formId) {
   const cfg = (await settings.get(interaction.guild.id)).applications;
   const form = cfg.forms.find((f) => f.id === formId);
-  if (!form) return interaction.reply({ content: 'Formularen findes ikke.', ...EPH });
+  if (!form||form.enabled===false) return interaction.reply({ content: 'Formularen findes ikke.', ...EPH });
+  if(form.requiredRole&&!interaction.member.roles.cache.has(form.requiredRole))return interaction.reply({content:'Du mangler den krævede rolle til denne ansøgning.',...EPH});
+  if(form.minAccountAgeDays&&(Date.now()-interaction.user.createdTimestamp)/86400000<form.minAccountAgeDays)return interaction.reply({content:'Din Discord-konto er for ny til denne ansøgning.',...EPH});
   const pending = (await db.prepare("SELECT id FROM applications WHERE guild_id=? AND user_id=? AND form_id=? AND status='pending'").get(interaction.guild.id, interaction.user.id, form.id));
   if (pending) return interaction.reply({ content: 'Du har allerede en ansøgning der afventer svar.', ...EPH });
   const modal = new ModalBuilder().setCustomId(`app:modal:${form.id}`).setTitle(`Ansøgning: ${form.name}`.slice(0, 45));
@@ -40,10 +41,13 @@ async function review(guild, appId, accepted, reviewerId) {
   if (!app || app.status !== 'pending') throw new Error('Ansøgningen er allerede behandlet.');
   const cfg = (await settings.get(guild.id)).applications;
   const form = cfg.forms.find((f) => f.id === app.form_id);
-  (await db.prepare('UPDATE applications SET status=?, reviewed_by=? WHERE id=?').run(accepted ? 'accepted' : 'denied', reviewerId, app.id));
+
   const member = await guild.members.fetch(app.user_id).catch(() => null);
-  if (accepted && member && form?.acceptRole) await member.roles.add(form.acceptRole).catch(() => {});
-  if (member) member.send(`Din ansøgning (**${form?.name || app.form_id}**) på **${guild.name}** er ${accepted ? '✅ accepteret' : '❌ afvist'}.`).catch(() => {});
+  if (accepted && member && form?.acceptRole) await member.roles.add(form.acceptRole);
+  if(accepted&&member&&form?.removeRole)await member.roles.remove(form.removeRole);
+  if(!accepted&&member&&form?.denyRole)await member.roles.add(form.denyRole);
+  (await db.prepare('UPDATE applications SET status=?, reviewed_by=? WHERE id=?').run(accepted ? 'accepted' : 'denied', reviewerId, app.id));
+  if (member) member.send((accepted?form?.acceptMessage:form?.denyMessage)||`Din ansøgning (**${form?.name || app.form_id}**) på **${guild.name}** er ${accepted ? '✅ accepteret' : '❌ afvist'}.`).catch(() => {});
   // Opdater review-beskeden
   const ch = guild.channels.cache.get(app.channel_id);
   const msg = ch && (await ch.messages.fetch(app.message_id).catch(() => null));
@@ -61,13 +65,16 @@ async function onInteraction(interaction) {
     const cfg = (await settings.get(interaction.guild.id)).applications;
     const form = cfg.forms.find((f) => f.id === id.split(':')[2]);
     if (!form) return interaction.reply({ content: 'Formularen findes ikke.', ...EPH });
+    if(form.requiredRole&&!interaction.member.roles.cache.has(form.requiredRole))return interaction.reply({content:'Du mangler den krævede rolle.',...EPH});
+    if(form.minAccountAgeDays&&(Date.now()-interaction.user.createdTimestamp)/86400000<form.minAccountAgeDays)return interaction.reply({content:'Din Discord-konto er for ny.',...EPH});
+    const pending=await db.prepare("SELECT id FROM applications WHERE guild_id=? AND user_id=? AND form_id=? AND status='pending'").get(interaction.guild.id,interaction.user.id,form.id);if(pending)return interaction.reply({content:'Du har allerede en ansøgning, der afventer svar.',...EPH});
     const qs = form.questions.filter(Boolean).slice(0, 5);
     const answers = qs.map((_, i) => interaction.fields.getTextInputValue(`q${i}`));
     const info = (await db.prepare('INSERT INTO applications (guild_id, form_id, user_id, answers, created_at) VALUES (?,?,?,?,?)')
       .run(interaction.guild.id, form.id, interaction.user.id, JSON.stringify(answers), Date.now()));
     const e = embed(`Ansøgning #${info.lastInsertRowid}: ${form.name}`, `Fra <@${interaction.user.id}> (${interaction.user.tag})\nKonto oprettet <t:${Math.floor(interaction.user.createdTimestamp / 1000)}:R>`)
       .addFields(qs.map((q, i) => ({ name: q.slice(0, 256), value: answers[i].slice(0, 1024) || '-' })));
-    const msg = await sendTo(interaction.guild, cfg.reviewChannel, { embeds: [e], components: [reviewRow(info.lastInsertRowid)] });
+    const msg = await sendTo(interaction.guild, form.reviewChannel||cfg.reviewChannel, { embeds: [e], components: [reviewRow(info.lastInsertRowid)] });
     if (msg) (await db.prepare('UPDATE applications SET message_id=?, channel_id=? WHERE id=?').run(msg.id, msg.channelId, info.lastInsertRowid));
     return interaction.reply({ content: '✅ Din ansøgning er sendt! Du får besked når den er behandlet.', ...EPH });
   }

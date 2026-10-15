@@ -1,6 +1,8 @@
 // Standard-indstillinger for en ny server. Alt kan ændres i dashboardet.
 // Pladsholdere i beskeder: {user} {username} {server} {count} {level}
 const DEFAULTS = {
+  birthdays:{enabled:false,channel:'',time:'08:00',message:'🎉 Tillykke med fødselsdagen {user}{age}! Hele {server} ønsker dig en fantastisk dag! 🎂',birthdayRole:'',showAge:false,mentionMember:true,mediaId:'',imageUrl:'',color:'#e879f9',members:{}},
+  slideshow:{enabled:false,channel:'',title:'Dream Network · Highlights',interval:30,color:'#5865f2',slides:[],state:null},
   restart: require('./modules/restart-config').defaults,
   appearance: require('./modules/appearance').defaults,
   developer: { enabled: false, roles: [], reporterRoles: [] },
@@ -20,7 +22,7 @@ const DEFAULTS = {
     honeypotChannel: '',
     exemptRoles: [],
   },
-  welcome: {
+  welcome: {title:'Velkommen til {server}',color:'#5865f2',mediaId:'',imageUrl:'',footer:'',showAvatar:true,mentionMember:true,
     enabled: false,
     channel: '',
     message: 'Velkommen {user} til **{server}**! Du er medlem nr. {count} 🎉',
@@ -49,7 +51,7 @@ const DEFAULTS = {
   custom: {
     commands: [],         // [{ name: 'regler', response: 'Læs #regler' }]
   },
-  tickets: {
+  tickets: {allowCitizenClose:true,quickResponses:[],color:'#5865f2',mediaId:'',imageUrl:'',footer:'',
     enabled: true,
     categoryId: '',
     supportRoles: [],
@@ -63,7 +65,7 @@ const DEFAULTS = {
       { id: 'report', label: 'Rapportér en spiller', emoji: '🚨', questions: ['Hvem rapporterer du?', 'Hvad skete der?'] },
     ],
   },
-  applications: {
+  applications: {color:'#5865f2',mediaId:'',imageUrl:'',footer:'',
     reviewChannel: '',
     panelTitle: 'Ansøgninger',
     panelText: 'Tryk på en knap for at ansøge.',

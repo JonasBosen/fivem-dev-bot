@@ -6,12 +6,13 @@ const { embed, fill, memberVars, sendTo } = require('../util');
 const EPH = { flags: MessageFlags.Ephemeral };
 
 // ---------- Velkomst ----------
+async function welcomePayload(member,cfg){const vars=memberVars(member),e=embed(fill(cfg.title||'Velkommen til {server}',vars),fill(cfg.message,vars));if(cfg.showAvatar!==false)e.setThumbnail(member.user.displayAvatarURL());const payload=await require('./panel-media').decorate(member.guild.id,cfg,e,{content:cfg.mentionMember===false?'':('<@'+member.id+'>'),allowedMentions:{parse:[],users:cfg.mentionMember===false?[]:[member.id]}});if(cfg.imageOnly){delete payload.embeds;if(!cfg.mediaId)payload.content=(payload.content+' '+cfg.imageUrl).trim();}return payload;}
 async function onJoin(member) {
   const cfg = (await settings.get(member.guild.id)).welcome;
   if (!cfg.enabled) return;
   const vars = memberVars(member);
-  if (cfg.channel && cfg.message) {
-    await sendTo(member.guild, cfg.channel, { content: `<@${member.id}>`, embeds: [embed(null, fill(cfg.message, vars)).setThumbnail(member.user.displayAvatarURL())] });
+  if (cfg.channel && (cfg.message||cfg.mediaId||cfg.imageUrl)) {
+    await sendTo(member.guild, cfg.channel, await welcomePayload(member,cfg));
   }
   if (cfg.dmMessage) member.send(fill(cfg.dmMessage, vars)).catch(() => {});
   for (const r of cfg.autoRoles.filter(Boolean)) await member.roles.add(r).catch((e) => console.warn('[autorole]', e.message));
@@ -107,4 +108,4 @@ async function customCommand(message) {
   return true;
 }
 
-module.exports = { onJoin, onLeave, sendVerifyPanel, onVerify, giveXp, rank, leaderboard, onCommand, customCommand };
+module.exports = { welcomePayload,onJoin, onLeave, sendVerifyPanel, onVerify, giveXp, rank, leaderboard, onCommand, customCommand };
