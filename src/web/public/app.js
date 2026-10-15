@@ -211,7 +211,7 @@ function panelCard(type, text) {
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],
+  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['restart','🔄','Genstart'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],
 ];
 
 const pages = {
@@ -375,6 +375,7 @@ const pages = {
       h('div', { class: 'card muted' }, 'Twitch kræver TWITCH_CLIENT_ID og TWITCH_CLIENT_SECRET i .env. YouTube virker uden nøgle – find kanal-ID’et (UC…) under "Del kanal → Kopiér kanal-ID". Der tjekkes hvert 2. minut.')];
   },
 
+  async restart() { return [await renderRestarts()]; },
   async custom() { return dashboardTabs([{id:'discord',label:'Discord-kommandoer',content:[await renderCommandCatalog()]},{id:'custom',label:'Egne tekstkommandoer',content:[settingsCard('custom','Egne tekstkommandoer')]}],G.id+'-commands','discord'); },
 };
 
@@ -411,7 +412,7 @@ async function route() {
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(['developer','stream','appearance','logs','applications','custom'].includes(page)?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','stream','appearance','logs','applications','custom','restart'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
