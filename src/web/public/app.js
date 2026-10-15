@@ -220,6 +220,7 @@ const PAGES = [
 
 const pages = {
   async account(){return renderMyAccess();},
+  async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},
 
   async developer() { return renderDeveloperWorkspace(); },
@@ -393,26 +394,26 @@ async function route() {
   clearInterval(pollTimer);
   if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
-  if(gid&&page==='developer'&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='restart'){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){sessionStorage.setItem('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
     if (!G || G.id !== gid) G = await api(`/api/guild/${gid}`);
   } catch (e) { toast(e.message, true); location.hash = ''; return; }
-  if (G.developerOnly && !['developer','account','appearance'].includes(page)) { location.hash = '#/g/'+gid+'/developer'; return; }
+  if (G.developerOnly && !['developer','developer-wishes','account','appearance'].includes(page)) { location.hash = '#/g/'+gid+'/developer'; return; }
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
-    orderedPages().filter(p=>(!G.developerOnly||['developer','account','appearance'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
+    orderedPages().filter(p=>(!G.developerOnly||['developer','account','appearance'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${(k === page||k==='developer'&&page==='developer-wishes') ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
     h('div', { class: 'foot' }, h('a', { href: '#/g/'+gid+'/account' }, 'Min adgang'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
   const main = h('main', {}, h('div', { class: 'top' },
     h('button', { class: 'btn sec menu-btn', onclick: () => side.classList.toggle('open') }, '☰'),
-    h('h1', {}, PAGES.find((p) => p[0] === page)?.[2] || ''), h('span')), h('p', { class: 'muted' }, 'Indlæser…'));
+    h('h1', {}, PAGES.find((p) => p[0] === page)?.[2] || (page==='developer-wishes'?'Ønsker til serveren':'')), h('span')), h('p', { class: 'muted' }, 'Indlæser…'));
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(['developer','stream','appearance','logs','applications','custom','restart','account'].includes(page)?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','developer-wishes','stream','appearance','logs','applications','custom','restart','account'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 

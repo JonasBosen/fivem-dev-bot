@@ -124,8 +124,8 @@ async function update(guild, id, input, uid) {
   validate(input);
   const previous = await get(guild.id, id);
   if (!previous) throw new Error('Sagen findes ikke');
-  const planning=require('./developer-planning').validate(input.planning||previous.planning);
-  if(planning.columnId&&input.status!==previous.status){const columns=await require('./developer-board').get(guild.id);if(columns.find(c=>c.id===planning.columnId)?.status!==input.status)planning.columnId='';}
+  const planning=require('./developer-planning').validate(input.planning||previous.planning);if(planning.reportType!==previous.planning.reportType)throw new Error('Fejl og ønsker tilhører separate paneler og kan ikke flyttes mellem dem');
+  if(planning.columnId&&input.status!==previous.status){const columns=await require('./developer-board').get(guild.id,previous.planning.reportType);if(columns.find(c=>c.id===planning.columnId)?.status!==input.status)planning.columnId='';}
   const reporter=await guild.client?.users?.fetch?.(previous.user_id).catch(()=>null);planning.reporterName=reporter?.globalName||reporter?.username||previous.planning.reporterName||previous.user_id;
   if(input.status==='doing'&&previous.status!=='doing'&&!planning.developers.some(d=>d.id===uid)){if(planning.developers.length>=20)throw new Error('Der er allerede tilknyttet 20 udviklere');planning.developers.push({id:uid,name:uid});}
   for(const assigned of planning.developers){if(!previous.planning.developers?.some(d=>d.id===assigned.id)&&assigned.id!==uid&&!(await require('./personal-access').roles(guild,assigned.id)).developer)throw new Error('Den valgte person har ikke udvikleradgang');const user=await guild.client?.users?.fetch?.(assigned.id).catch(()=>null);assigned.name=user?.globalName||user?.username||assigned.name||assigned.id;}

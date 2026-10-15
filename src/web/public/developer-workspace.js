@@ -1,8 +1,8 @@
-async function renderDeveloperWorkspace() {
-  const base=`/api/guild/${G.id}/developer`;
+async function renderDeveloperWorkspace(isWishes=false) {
+  const base=`/api/guild/${G.id}/developer`,boardType=isWishes?'request':'bug',listUrl=base+'?board='+boardType,columnsUrl=base+'/columns?board='+boardType;const switchBoard=wishes=>{if(wishes===isWishes)return;if(!canLeave())return;sessionStorage.setItem('section:'+G.id+(wishes?'-developer-wishes':'-developer'),wishes?'wishes':'board');location.hash='#/g/'+G.id+'/'+(wishes?'developer-wishes':'developer');};
   const gate=await api('/api/guild/'+G.id+'/developer-access');
   if(!gate.unlocked){const pin=h('input',{type:'password',inputmode:'numeric',pattern:'[0-9]{4}',maxlength:4,autocomplete:'off','aria-label':'Udviklerkode'});return [h('form',{class:'card',onsubmit:async e=>{e.preventDefault();try{await api('/api/guild/'+G.id+'/developer-access/unlock',{method:'POST',body:{pin:pin.value}});await route();}catch(err){toast(err.message,true);}}},h('h2',{},'Lås udviklerpanelet op'),h('p',{},'Indtast den separate firecifrede kode. Din Discord skal også have udviklerrollen.'),pin,h('button',{class:'btn',type:'submit'},'Lås op'))];}
-  const [reportCategories,initialTasks,panelConfig,initialColumns,initialPresence,initialWishConfig]=await Promise.all([api('/report-categories.json'),api(base),api(base+'/panel-config'),api(base+'/columns'),api(base+'/presence'),api(base+'/wish-panel-config')]);
+  const [reportCategories,initialTasks,panelConfig,initialColumns,initialPresence,initialWishConfig]=await Promise.all([api('/report-categories.json'),api(listUrl),api(base+'/panel-config'),api(columnsUrl),api(base+'/presence'),api(base+'/wish-panel-config')]);
   const reportLabel=p=>p?.reportCategory==='other'?p.reportCategoryCustom:reportCategories.find(c=>c.id===p?.reportCategory)?.label||'';
   let presence=initialPresence;const presenceRows=h('tbody');
   let columns=initialColumns,draggedColumn=null;
@@ -10,7 +10,7 @@ async function renderDeveloperWorkspace() {
   const replySeen=new Map(tasks.map(t=>[t.id,t.latestCitizenReply||0])),unread=new Set(tasks.filter(t=>t.unreadCitizenReply).map(t=>t.id)),readThrough=new Map(tasks.filter(t=>!t.unreadCitizenReply).map(t=>[t.id,t.latestCitizenReply||0]));
   const unreadBadge=id=>unread.has(id)?h('span',{class:'conversation-unread','aria-label':'Ny besked fra borger'},'1'):null;
   let refreshConversation=null,polling=false,dragged=null,moving=false,calendar=null,conversationVisible=false,updateConversationBadge=null;
-  const layout=developerLayout(G.id,me?.user?.id||'developer'),windows=new Map(),windowHost=h('div',{class:'case-windows'});
+  const layout=developerLayout(G.id+(isWishes?'-wishes':''),me?.user?.id||'developer'),windows=new Map(),windowHost=h('div',{class:'case-windows'});
   const listBody=h('tbody');
   const drawer=h('div',{class:'dev-drawer',hidden:true,role:'dialog','aria-modal':'true','aria-label':'Redigér sag'});
   const drawerBackdrop=h('div',{class:'dev-drawer-backdrop',onclick:close});
@@ -31,7 +31,7 @@ async function renderDeveloperWorkspace() {
   }
   const columnForTask=t=>{const assigned=t.planning?.columnId;if(assigned)return columns.some(c=>c.id===assigned)?assigned:'unassigned';const baseLane=taskLane(t);return columns.some(c=>c.id===baseLane)?baseLane:'unassigned';};
   const states={todo:'Ikke taget',critical:'Kritisk',doing:'Taget · I gang',closed:'Afsluttet',rejected:'Afvist'};
-  const wishBoard=h('div',{class:'work-board'}),board=h('div',{class:'work-board'}), detail=h('section',{class:'card work-detail'},h('h2',{},'Dit arbejdsområde'),h('p',{class:'muted'},'Åbn en sag eller opret en opgave. Her kan du gemme noter, billeder og tjeklister.'));
+  const board=h('div',{class:'work-board'}), detail=h('section',{class:'card work-detail'},h('h2',{},'Dit arbejdsområde'),h('p',{class:'muted'},'Åbn en sag eller opret en opgave. Her kan du gemme noter, billeder og tjeklister.'));
   const search=h('input',{type:'search',placeholder:'Søg efter titel, beskrivelse eller sagsnummer',oninput:()=>draw()});
   const priorities={low:'Lav',normal:'Normal',high:'Høj',critical:'Kritisk'};
   const kinds={bug:'Fejl',feature:'Ny funktion',optimization:'Optimering',mapping:'Mapping / MLO',vehicle:'Køretøj',ui:'UI / NUI',maintenance:'Vedligehold'};
@@ -59,10 +59,10 @@ async function renderDeveloperWorkspace() {
           h('div',{class:'work-ticket-top'},h('span',{},`#${t.id}`),unreadBadge(t.id),h('span',{'aria-label':label},['done','closed'].includes(state)?'☑':state==='doing'?'◩':'☐')),
           h('span',{class:'drag-grip','aria-label':'Træk for at flytte sagen'},'⠿ Træk kortet'),h('b',{},t.title),h('small',{class:'muted'},'Borger: '+(t.planning?.reporterName||t.user_id)),t.planning?.developers?.length&&h('small',{class:'muted'},'Udviklere: '+t.planning.developers.map(d=>d.name).join(', ')),['low','high','critical'].includes(t.planning?.priority)&&h('span',{class:'priority-badge priority-'+t.planning.priority},({low:'🟢 Lav',high:'🟠 Mellem / vigtig',critical:'🔴 Kritisk'})[t.planning.priority]),t.planning?.scheduledStart&&h('small',{class:'schedule-badge'},'◷ '+date(Date.parse(t.planning.scheduledStart))),h('small',{class:'work-planning-badges'},[reportLabel(t.planning),t.planning?.priority==='critical'?'':priorities[t.planning?.priority]||'Normal',t.planning?.resource,t.planning?.assignee,t.planning?.deadline?'Frist: '+t.planning.deadline:''].filter(Boolean).join(' · ')),h('p',{},t.description.slice(0,110)),h('div',{class:'work-ticket-bottom'},`${t.checklist.filter(c=>c.done).length}/${t.checklist.length} punkter`,h('small',{},date(t.updated_at))))) : [h('p',{class:'muted'},'Ingen opgaver her')]) );
     layout.lane(lane,state);return lane;
-    }));};buildBoard(board,false);buildBoard(wishBoard,true);
+    }));};buildBoard(board,isWishes);
   }
   function drawList(){
-    listBody.replaceChildren(...tasks.filter(t=>!t.planning?.archived&&t.planning?.reportType!=='request').map(t=>h('tr',{},h('td',{},h('button',{class:'btn sec sm',onclick:run(()=>{return open(t.id);})},'#'+t.id+' '+t.title,unreadBadge(t.id))),h('td',{class:'state-text status-'+t.status},states[t.status]),h('td',{class:'priority-badge priority-'+t.planning?.priority},priorities[t.planning?.priority]||'Normal'),h('td',{},t.planning?.scheduledStart?date(Date.parse(t.planning.scheduledStart)):'Ikke planlagt'),h('td',{},t.planning?.assignee||'Ikke tildelt'))));
+    listBody.replaceChildren(...tasks.filter(t=>!t.planning?.archived&&(t.planning?.reportType==='request')===isWishes).map(t=>h('tr',{},h('td',{},h('button',{class:'btn sec sm',onclick:run(()=>{return open(t.id);})},'#'+t.id+' '+t.title,unreadBadge(t.id))),h('td',{class:'state-text status-'+t.status},states[t.status]),h('td',{class:'priority-badge priority-'+t.planning?.priority},priorities[t.planning?.priority]||'Normal'),h('td',{},t.planning?.scheduledStart?date(Date.parse(t.planning.scheduledStart)):'Ikke planlagt'),h('td',{},t.planning?.assignee||'Ikke tildelt'))));
   }
   async function schedule(id,day){
     if(!canLeave())return;
@@ -73,7 +73,7 @@ async function renderDeveloperWorkspace() {
     await api(base+'/'+id,{method:'PUT',body:{...task,planning:{...task.planning,scheduledStart:start.toISOString(),scheduledEnd:end.toISOString()}}});
     dirty=false;await refresh();if(windows.has(id)&&!windows.get(id).dirty)await open(id,true);toast('Kalendertid er gemt og borgerens statusbesked er opdateret');
   }
-  async function refresh(){tasks=await api(base);draw();}
+  async function refresh(){tasks=await api(listUrl);draw();}
   async function open(id,reload=false){
     const existing=windows.get(id);if(existing&&!reload){existing.focus();return;}if(existing){existing.dispose();windows.delete(id);}
     let dirty=false,saving=false,conversationVisible=false,refreshConversation=null,updateConversationBadge=null;
@@ -182,7 +182,7 @@ async function renderDeveloperWorkspace() {
   const templates={bug:'Fejlrapport',feature:'Ny funktion',optimization:'Ydelsesoptimering',mapping:'Mapping / MLO',vehicle:'Køretøj',ui:'NUI / interface'};
   const template=h('select',{},...Object.entries(templates).map(([v,l])=>h('option',{value:v},l)));
   const newCard=h('details',{class:'card work-new'},h('summary',{},'+ Opret en intern opgave'),h('p',{class:'muted'},'Gem egne arbejdsopgaver, idéer eller huskelister her.'),h('label',{class:'f'},'Opgavetype',template),field({k:'title',l:'Titel'},newTask),field({k:'description',l:'Beskrivelse',t:'textarea'},newTask),h('button',{class:'btn',onclick:run(async()=>{
-    if(!canLeave())return;const task=await api(base,{method:'POST',body:newTask});const plan={...task.planning,kind:template.value};const steps=template.value==='optimization'?['Mål udgangspunkt med profiler','Find belastende resource','Implementér optimering','Mål igen og test på server']:['Genskab / afgræns opgaven','Implementér ændringen','Test på testserver','Kontrollér før release'];await api(`${base}/${task.id}`,{method:'PUT',body:{...task,planning:plan,checklist:steps.map(text=>({text,done:false}))}});dirty=false;newTask.title='';newTask.description='';await refresh();newCard.open=false;await open(task.id);toast('Opgaven er gemt');
+    if(!canLeave())return;const task=await api(base,{method:'POST',body:{...newTask,reportType:boardType}});const plan={...task.planning,kind:template.value};const steps=template.value==='optimization'?['Mål udgangspunkt med profiler','Find belastende resource','Implementér optimering','Mål igen og test på server']:['Genskab / afgræns opgaven','Implementér ændringen','Test på testserver','Kontrollér før release'];await api(`${base}/${task.id}`,{method:'PUT',body:{...task,planning:plan,checklist:steps.map(text=>({text,done:false}))}});dirty=false;newTask.title='';newTask.description='';await refresh();newCard.open=false;await open(task.id);toast('Opgaven er gemt');
   })},'Opret og åbn opgave'));
 
   const logBody=h('div'),logCount=h('p',{class:'muted'});let nextLog=null,logLoaded=false,logLoading=false,loadedCount=0;
@@ -191,7 +191,7 @@ async function renderDeveloperWorkspace() {
   async function loadLogs(reset){
     if(logLoading)return;logLoading=true;
     try{
-      const result=await api(base+'/audit/events'+(!reset&&nextLog?'?before='+nextLog:''));
+      const result=await api(base+'/audit/events?board='+boardType+(!reset&&nextLog?'&before='+nextLog:''));
       if(reset){logBody.replaceChildren();loadedCount=0;}
       logBody.append(...result.events.map(e=>h('details',{class:'work-comment'},h('summary',{},date(e.created_at)+' · #'+e.task_id+' · '+(labels[e.action]||e.action)+' · '+e.user_id),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere'},JSON.stringify(e.details,null,2)),e.details.fileId&&h('a',{href:base+'/'+e.task_id+'/files/'+e.details.fileId,target:'_blank',rel:'noopener'},'Åbn vedhæftet billede'),e.action==='created'&&e.details.image&&h('a',{href:base+'/'+e.task_id+'/image',target:'_blank',rel:'noopener'},'Åbn oprindeligt billede'))));
       loadedCount+=result.events.length;nextLog=result.next;older.hidden=!nextLog;logLoaded=true;logCount.textContent=loadedCount+' hændelser indlæst'+(!nextLog?' · hele historikken er indlæst':'');
@@ -201,17 +201,17 @@ async function renderDeveloperWorkspace() {
   const panelChannel=h('select',{},...optionList(G.channels,'# ','Vælg Discord-kanal'));
   const wishButtonBuilder=await renderReportButtonBuilder(base,reportCategories,initialWishConfig,'wish-panel-config');
   const wishChannel=h('select',{},...optionList(G.channels,'# ','Vælg ønskekanal'));
-  const wishPanel=h('div',{class:'card'},h('h2',{},'Ønsker til serveren'),h('p',{class:'muted'},'MLO, biler, scripts og andre forslag behandles på denne separate tavle. Sagerne har samme samtale, billeder og ansvarlige udviklere som fejlmeldinger.'),wishChannel,h('button',{class:'btn',onclick:run(async()=>{await api(base+'/wishes/panel',{method:'POST',body:{channel:wishChannel.value}});toast('Ønskepanelet er sendt til Discord');})},'Send ønskepanel til Discord'));
+  const wishPanel=h('div',{class:'card'},h('h2',{},'Ønsker til serveren'),h('p',{class:'muted'},'MLO, biler, scripts og andre forslag behandles på denne separate tavle. Ønsker har egne sager, samtaler, kolonner og planlægning. De blandes ikke med fejlmeldinger.'),wishChannel,h('button',{class:'btn',onclick:run(async()=>{await api(base+'/wishes/panel',{method:'POST',body:{channel:wishChannel.value}});toast('Ønskepanelet er sendt til Discord');})},'Send ønskepanel til Discord'));
   const buttonBuilder=await renderReportButtonBuilder(base,reportCategories,panelConfig);
   const discord=h('div',{class:'card'},h('span',{class:'workspace-eyebrow'},'DISCORD & OPSÆTNING'),h('h2',{},'Fejlmeldingspanel til borgerne'),h('p',{class:'muted'},'Vælg en kanal og send panelet. Borgeren kan indsende titel, beskrivelse og billede. Sagen lander på FiveM-arbejdstavlen.'),panelChannel,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{if(!panelChannel.value)throw new Error('Vælg en kanal');await api(base+'/panel',{method:'POST',body:{channel:panelChannel.value}});toast('Fejlmeldingspanelet er sendt til Discord');})},'Send panel til Discord')),h('p',{class:'muted'},'Borgerkommandoer: /fejl · /fejlstatus · /fejlsvar · /fejlbillede. Interne noter, planlægning og logs er kun til udviklere og administratorer.'));
   const lockButton=h('button',{class:'btn sec',onclick:run(async()=>{if(!canLeave())return;dirty=false;await api('/api/guild/'+G.id+'/developer-access/lock',{method:'POST',body:{}});await route();})},'Lås udviklerpanelet');
   const changePin=h('div',{class:'card'},h('h3',{},'Personlig adgang'),h('p',{class:'muted'},'Udviklerpanelet kræver udviklerrollen, personlig adgang og en separat firecifret kode. Administrér din kode under Min adgang.'));
   const registry=developerRegistry(base);
-  const header=h('div',{class:'card work-header workspace-hero'},h('div',{},h('span',{class:'workspace-eyebrow'},'FIVEM · UDVIKLINGSCENTER'),h('h2',{},'Fra fejlmelding til færdig release'),h('p',{class:'muted'},'Én arbejdsplads til planlægning, dokumentation og borgersager.')),counts,lockButton);
+  const header=h('div',{class:'card work-header workspace-hero'},h('div',{},h('span',{class:'workspace-eyebrow'},'FIVEM · UDVIKLINGSCENTER'),h('h2',{},isWishes?'Ønsker til serveren':'Fra fejlmelding til færdig release'),h('p',{class:'muted'},'Én arbejdsplads til planlægning, dokumentation og borgersager.')),counts,lockButton);
   const layoutLock=h('button',{class:'btn sec',onclick:()=>{layout.toggle();layoutLock.textContent=layout.locked?'🔒 Lås layout op':'🔓 Lås layout';draw();drawColumns();}},layout.locked?'🔒 Lås layout op':'🔓 Lås layout');
   const columnEditor=h('details',{class:'card column-editor'}),columnRows=h('div');
   const newColumn={name:'Ny kolonne',color:'#7c6cff',status:'todo'};
-  async function persistColumns(next){columns=await api(base+'/columns',{method:'PUT',body:next});drawColumns();draw();}
+  async function persistColumns(next){columns=await api(columnsUrl,{method:'PUT',body:next});drawColumns();draw();}
   function drawColumns(){columnRows.replaceChildren(...layout.order(columns).map(c=>{const name=h('input',{value:c.name,'aria-label':'Navn på kolonne '+c.name,disabled:layout.locked}),color=h('input',{type:'color',value:c.color,'aria-label':'Farve på kolonne '+c.name,disabled:layout.locked}),status=h('select',{'aria-label':'Sagstatus for '+c.name,disabled:layout.locked},...Object.entries({todo:'Ikke taget',doing:'I gang',closed:'Afsluttet',rejected:'Afvist'}).map(([value,label])=>h('option',{value},label)));status.value=c.status;return h('div',{class:'row'},h('div',{class:'grid'},name,color,status),h('div',{class:'actions'},h('button',{class:'btn sec',disabled:layout.locked,onclick:run(()=>persistColumns(columns.map(x=>x.id===c.id?{...x,name:name.value,color:color.value,status:status.value}:x)))},'Gem kolonne'),h('button',{class:'btn sec',disabled:layout.locked||layout.order(columns)[0].id===c.id,onclick:()=>{const ordered=layout.order(columns),i=ordered.findIndex(x=>x.id===c.id);if(i>0){layout.moveColumn(c.id,ordered[i-1].id,columns);draw();drawColumns();}}},'Flyt kolonne til venstre'),h('button',{class:'btn bad',onclick:run(async()=>{if(!window.confirm('Slet kolonnen? Sagerne bevares og vises under Uden kolonne.'))return;await persistColumns(columns.filter(x=>x.id!==c.id));})},'Slet kolonne')));}));}
   columnEditor.append(h('summary',{},'Administrér kolonner'),h('p',{class:'muted'},'Lås layoutet op for at ændre navn, farve, rækkefølge og størrelse. Træk i kolonnens overskrift for at flytte den. Oprettelse og sletning er altid muligt; sager slettes aldrig sammen med en kolonne.'),columnRows,h('div',{class:'grid'},field({k:'name',l:'Navn på ny kolonne'},newColumn),h('label',{class:'f'},'Farve på ny kolonne',h('input',{type:'color',value:newColumn.color,oninput:e=>newColumn.color=e.target.value}))),h('button',{class:'btn',onclick:run(()=>persistColumns([...columns,{...newColumn,id:'column-'+crypto.randomUUID().slice(0,12)}]))},'Opret kolonne'));drawColumns();
   const layoutReset=h('button',{class:'btn sec',onclick:()=>{if(layout.locked)return toast('Lås layoutet op først');layout.reset();draw();}},'Nulstil placeringer og størrelser');
@@ -220,7 +220,7 @@ async function renderDeveloperWorkspace() {
   pollTimer=setInterval(async()=>{
     if(polling||dragged||draggedColumn||moving)return;polling=true;
     try{
-      const latest=await api(base);
+      const latest=await api(listUrl);
       for(const task of latest){const previous=replySeen.get(task.id)||0;if(task.unreadCitizenReply&&task.latestCitizenReply>(readThrough.get(task.id)||0))unread.add(task.id);else unread.delete(task.id);if(task.latestCitizenReply>previous)toast('Nyt svar fra borger på sag #'+task.id);replySeen.set(task.id,task.latestCitizenReply||0);}for(const frame of windows.values())frame.badge();
       const changed=JSON.stringify(tasks)!==JSON.stringify(latest);tasks=latest;if(changed)draw();for(const frame of windows.values())await frame.refresh();
     }catch(e){if(e.status===423){dirty=false;clearInterval(pollTimer);await route();}}finally{polling=false;}
@@ -233,15 +233,15 @@ async function renderDeveloperWorkspace() {
   const previousCleanup=window.developerCleanup;previousCleanup?.();window.developerCleanup=()=>{beat(true);clearInterval(heartbeatTimer);document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('pagehide',onPageHide);window.removeEventListener('keydown',escape);window.removeEventListener('beforeunload',unload);for(const w of windows.values())w.dispose();layout.destroy();};
   draw();
   return [header,dashboardTabs([
-    {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:[buttonBuilder,discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
-    {id:'board',icon:'▦',label:'FiveM-arbejdstavle',content:[h('p',{class:'muted'},'Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,columnEditor,newCard,board]},
-    {id:'wishes',icon:'💡',label:'Ønsker til serveren',content:[wishPanel,wishButtonBuilder,wishBoard]},
+    {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:isWishes?[wishPanel,wishButtonBuilder,changePin]:[buttonBuilder,discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
+    {id:'board',icon:'▦',label:'FiveM-arbejdstavle',onOpen:()=>switchBoard(false),content:isWishes?[]:[h('p',{class:'muted'},'Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,columnEditor,newCard,board]},
+    {id:'wishes',icon:'💡',label:'Ønsker til serveren',onOpen:()=>switchBoard(true),content:isWishes?[tools,columnEditor,newCard,board]:[]},
     {id:'calendar',icon:'◷',label:'Kalender',content:[calendar.element]},
     {id:'list',icon:'☷',label:'Sagsliste',content:[list]},
     {id:'registry',icon:'🗂',label:'Serverregister',content:[registry.element],onOpen:()=>registry.load().catch(e=>toast(e.message,true))},
     {id:'presence',icon:'◷',label:'Udviklere og paneltid',content:[h('div',{class:'card'},h('h2',{},'Samlet registreret tid i udviklerpanelet'),h('p',{class:'muted'},'Tid registreres, mens det oplåste panel er åbent i en synlig fane. Skjulte faner tæller ikke. Arbejdstimer på sager registreres separat. Oversigten opdateres hvert 30. sekund.'),h('table',{class:'table'},h('thead',{},h('tr',{},...['Discord-navn','Tid i panelet','Status','Senest set'].map(t=>h('th',{},t)))),presenceRows))]},
     {id:'logs',icon:'≡',label:'Aktivitetslog',content:[log],onOpen:()=>{if(!logLoaded)loadLogs(true).catch(e=>toast(e.message,true));}}
-  ],G.id+'-developer','board'),windowHost,layoutDock];
+  ],G.id+(isWishes?'-developer-wishes':'-developer'),isWishes?'wishes':'board'),windowHost,layoutDock];
 }
 
 async function renderReportButtonBuilder(base,categories,config,configPath='panel-config'){
