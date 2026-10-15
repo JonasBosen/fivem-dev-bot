@@ -38,6 +38,7 @@ client.once(Events.ClientReady, async (c) => {
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   giveaways.startTimer(c);
+  require('./modules/prize-wheel').start(c);
   stream.startPolling(c);
   require('./modules/community-studios').start(c);
   require('./modules/developer-wishes').ensureBesideDeveloperPanel(c).catch(e=>console.warn('[ønskepanel]',e.code||e.message));

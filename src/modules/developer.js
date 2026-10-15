@@ -142,7 +142,7 @@ async function sendPanel(guild, channelId) {
   if (!config.enabled) throw new Error('Aktivér udviklermodulet først');
   const channel = await guild.channels.fetch(channelId);
   if (!channel?.isTextBased()) throw new Error('Vælg en tekstkanal');
-  await channel.send(require('./report-panel').panel(config.reportPanel));
+  await require('./developer-wishes').sendPanel(guild,channelId);
 }
 async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='',reportType='bug') {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
