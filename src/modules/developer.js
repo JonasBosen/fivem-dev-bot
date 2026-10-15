@@ -17,6 +17,7 @@ async function get(gid, id) {
   const task = parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id));
   if (task) task.comments = await db.prepare('SELECT * FROM dev_comments WHERE guild_id=? AND task_id=? ORDER BY id DESC LIMIT 100').all(gid,id);
   if(task) task.files=await require('./developer-files').list(gid,id);
+  if(task) task.planning=await require('./developer-planning').get(gid,id);
   return task;
 }
 async function comment(guild,id,uid,text,asDeveloper=false) {
@@ -96,10 +97,12 @@ async function update(guild, id, input, uid) {
   validate(input);
   const previous = await get(guild.id, id);
   if (!previous) throw new Error('Sagen findes ikke');
+  const planning=require('./developer-planning').validate(input.planning||previous.planning);
   if (!Number.isSafeInteger(input.version)) throw new Error('Version mangler');
   const result = await db.prepare('UPDATE dev_tasks SET title=?,description=?,status=?,notes=?,checklist=?,updated_at=?,version=version+1 WHERE guild_id=? AND id=? AND version=?').run(input.title.trim(), input.description, input.status, input.notes, JSON.stringify(input.checklist), Date.now(), guild.id, id, input.version);
   if (!result.changes) throw new Error('En anden har ændret sagen. Genindlæs før du gemmer.');
-  await require('./developer-audit').record(guild.id,id,uid,input.status==='rejected'?'rejected':'updated',{before:{title:previous.title,description:previous.description,status:previous.status,notes:previous.notes,checklist:previous.checklist},after:{title:input.title,description:input.description,status:input.status,notes:input.notes,checklist:input.checklist}});
+  await require('./developer-planning').save(guild.id,id,planning);
+  await require('./developer-audit').record(guild.id,id,uid,input.status==='rejected'?'rejected':'updated',{before:{title:previous.title,description:previous.description,status:previous.status,notes:previous.notes,checklist:previous.checklist,planning:previous.planning},after:{title:input.title,description:input.description,status:input.status,notes:input.notes,checklist:input.checklist,planning}});
   await db.prepare('INSERT INTO dev_history (guild_id,task_id,user_id,status,created_at) VALUES (?,?,?,?,?)').run(guild.id, id, uid, input.status, Date.now());
   await sync(guild.client, await get(guild.id, id));
   return get(guild.id, id);
@@ -156,7 +159,7 @@ async function onInteraction(i) {
 async function remove(guild,id,uid) {
   const task=await get(guild.id,id);
   if(!task) throw new Error('Sagen findes ikke');
-  await require('./developer-audit').record(guild.id,id,uid,'deleted',{title:task.title,status:task.status,notes:task.notes,checklist:task.checklist,description:task.description});
+  await require('./developer-audit').record(guild.id,id,uid,'deleted',{title:task.title,status:task.status,notes:task.notes,checklist:task.checklist,description:task.description,planning:task.planning});
   await db.prepare('INSERT INTO dev_deleted (guild_id,task_id,user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(guild_id,task_id) DO NOTHING').run(guild.id,id,uid,Date.now());
 }
 module.exports = { STATUS, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction };

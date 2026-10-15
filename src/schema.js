@@ -9,6 +9,7 @@ CREATE INDEX IF NOT EXISTS dev_files_task ON dev_files(guild_id,task_id);
 CREATE TABLE IF NOT EXISTS dev_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT NOT NULL, task_id INTEGER NOT NULL, user_id TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL, created_at INTEGER);
 CREATE INDEX IF NOT EXISTS dev_audit_guild ON dev_audit(guild_id);
 CREATE TABLE IF NOT EXISTS dev_deleted (guild_id TEXT NOT NULL, task_id INTEGER NOT NULL, user_id TEXT NOT NULL, created_at INTEGER, PRIMARY KEY(guild_id,task_id));
+CREATE TABLE IF NOT EXISTS dev_planning (guild_id TEXT NOT NULL, task_id INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(guild_id,task_id));
 CREATE TABLE IF NOT EXISTS dev_images (task_id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, mime TEXT NOT NULL, content TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS dev_tasks_guild ON dev_tasks(guild_id);
 CREATE UNIQUE INDEX IF NOT EXISTS dev_tasks_legacy ON dev_tasks(guild_id,legacy_id);
