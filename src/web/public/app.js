@@ -100,7 +100,7 @@ function field(f, obj) {
 const PH = 'Pladsholdere: {user} {username} {server} {count}';
 const SCHEMA = {
   developer: [{k:'enabled',l:'Aktivér fejlmeldinger',t:'toggle'},{k:'roles',l:'Udviklerroller',t:'roles'}],
-  general: [{ k: 'prefix', l: 'Prefix til custom commands', ph: '!' }],
+  general: [{ k: 'prefix', l: 'Prefix til custom commands', ph: '!' },{k:'adminRoles',l:'Roller med adgang til hele dashboardet',t:'roles'}],
   tickets: [
     { k: 'enabled', t: 'toggle', l: 'Tickets slået til' },
     { k: 'maxOpenPerUser', t: 'number', l: 'Maks åbne tickets pr. bruger', min: 1 },
@@ -221,23 +221,30 @@ const pages = {
     const states = {todo:'Afventer behandling',doing:'I gang',done:'Færdig',rejected:'Afvist'};
     const board = h('div',{class:'dev-board'});
     const editor = h('div',{class:'card'},h('p',{class:'muted'},'Vælg en sag for at se billeder, noter og tjekliste.'));
-    function open(t) {
+    async function open(t) {
+      t=await api(base+'/'+t.id);
       const draft = structuredClone(t);
       const checks=h('div');
       const drawChecks=()=>checks.replaceChildren(...draft.checklist.map((c,index)=>h('div',{class:'dev-check'},h('input',{type:'checkbox',checked:c.done,onchange:e=>c.done=e.target.checked}),h('input',{value:c.text,oninput:e=>c.text=e.target.value}),h('button',{class:'btn sec sm',onclick:()=>{draft.checklist.splice(index,1);drawChecks();}},'Fjern'))));
       drawChecks();
+      const conversation=h('div');
+      const drawConversation=list=>conversation.replaceChildren(...list.slice().reverse().map(c=>h('div',{class:'row'},h('b',{},c.author_type==='developer'?'Udvikler':'Borger'),h('small',{},' · '+date(c.created_at)),h('p',{style:'white-space:pre-wrap'},c.body))));
+      drawConversation(t.comments||[]);
+      const reply=h('textarea',{placeholder:'Svar til borgeren (sendes til Discord)',maxlength:1800});
       const newCheck=h('input',{placeholder:'Nyt punkt på tjeklisten',maxlength:300});
       const state=h('select',{onchange:e=>draft.status=e.target.value},Object.entries(states).map(([id,label])=>h('option',{value:id},label)));state.value=draft.status;
       editor.replaceChildren(h('h2',{},'#'+t.id+' · '+t.title),h('p',{class:'muted'},'Oprettet '+date(t.created_at)+' · Opdateret '+date(t.updated_at)),
         field({k:'title',l:'Titel'},draft),field({k:'description',l:'Fejlbeskrivelse',t:'textarea'},draft),h('label',{class:'f'},'Status',state),
         ...t.attachments.map(a=>h('a',{href:base+'/'+t.id+'/image',target:'_blank',rel:'noopener'},h('img',{class:'dev-image',src:base+'/'+t.id+'/image',alt:a.name||'Vedhæftet fejlskærmbillede'}))),
+        h('h3',{},'Samtale med borgeren'),conversation,reply,
+        h('button',{class:'btn sec',onclick:run(async()=>{const saved=await api(base+'/'+t.id+'/comments',{method:'POST',body:{text:reply.value}});toast(saved.sync_error||'Svar sendt');reply.value='';drawConversation(saved.comments||[]);})},'Send svar til borger'),
         field({k:'notes',l:'Interne udviklernoter',t:'textarea'},draft),h('h3',{},'Tjekliste'),checks,h('div',{class:'actions'},newCheck,h('button',{class:'btn sec',onclick:()=>{if(newCheck.value.trim()){draft.checklist.push({text:newCheck.value.trim(),done:false});newCheck.value='';drawChecks();}}},'Tilføj punkt')),
         t.sync_error&&h('p',{class:'err'},t.sync_error),h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{const saved=await api(base+'/'+t.id,{method:'PUT',body:draft});toast(saved.sync_error||'Sagen er gemt');route();})},'Gem sag og opdatér Discord'),h('button',{class:'btn sec',onclick:run(async()=>{const saved=await api(base+'/'+t.id+'/sync',{method:'POST',body:{}});toast(saved.sync_error||'Discord opdateret');})},'Prøv Discord igen')));
       editor.scrollIntoView({behavior:'smooth',block:'nearest'});
     }
     for(const [status,label] of Object.entries(states)) {
       const items=tasks.filter(t=>t.status===status);
-      board.append(h('section',{class:'dev-column'},h('h3',{},label+' · '+items.length),...items.map(t=>h('button',{class:'dev-task',onclick:()=>open(t)},h('b',{},'#'+t.id+' '+t.title),h('p',{},t.description.slice(0,130)),h('small',{},t.checklist.filter(c=>c.done).length+'/'+t.checklist.length+' punkter'+(t.attachments.length?' · Billede':'')),t.sync_error&&h('p',{class:'err'},'Discord afventer')))));
+      board.append(h('section',{class:'dev-column'},h('h3',{},label+' · '+items.length),...items.map(t=>h('button',{class:'dev-task',onclick:run(()=>open(t))},h('b',{},'#'+t.id+' '+t.title),h('p',{},t.description.slice(0,130)),h('small',{},t.checklist.filter(c=>c.done).length+'/'+t.checklist.length+' punkter'+(t.attachments.length?' · Billede':'')),t.sync_error&&h('p',{class:'err'},'Discord afventer')))));
     }
     const draft={title:'',description:''};
     return [h('div',{class:'card'},h('h2',{},'Fælles udviklertavle'),h('p',{class:'muted'},'Fejl fra Discord og interne opgaver. Borgeren følger status i en privat besked eller med /fejlstatus. Noter og tjeklister er interne.'),h('button',{class:'btn sec',onclick:run(route)},'Opdatér tavlen')),board,editor,

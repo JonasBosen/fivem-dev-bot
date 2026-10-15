@@ -25,7 +25,7 @@ const client = new Client({
 });
 
 const commandRoutes = {
-  fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
+  fejlsvar: developer, fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
   rank: community, leaderboard: community,
   ticket: tickets, application: applications, giveaway: giveaways,
   play: music, skip: music, pause: music, resume: music, stop: music, shuffle: music, queue: music, nowplaying: music, volume: music, loop: music,

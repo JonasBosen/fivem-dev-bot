@@ -14,6 +14,7 @@ const community = require('../modules/community');
 const music = require('../modules/music');
 const { parseDuration } = require('../util');
 
+const {isManager}=require('../access');
 const API = 'https://discord.com/api/v10';
 
 function startWeb(client, { databaseReady = true, listen = true } = {}) {
@@ -68,12 +69,10 @@ function startWeb(client, { databaseReady = true, listen = true } = {}) {
   const guildAccess = async (req, res, next) => {
     try {
     const gid = req.params.gid;
-    const allowed = owners.includes(req.session.user.id) || req.session.guilds.some((g) => g.id === gid);
     const guild = client.guilds.cache.get(gid);
-    if (!allowed) return res.status(403).json({ error: 'Ingen adgang til denne server' });
+
     if (!guild) return res.status(404).json({ error: 'Botten er ikke på denne server' });
-    const member = await guild.members.fetch({ user: req.session.user.id, force: true }).catch(() => null);
-    if (!owners.includes(req.session.user.id) && !member?.permissions.has(PermissionFlagsBits.ManageGuild) && !member?.permissions.has(PermissionFlagsBits.Administrator)) return res.status(403).json({ error: 'Du mangler administratoradgang' });
+    if (!owners.includes(req.session.user.id) && !await isManager(guild,req.session.user.id)) return res.status(403).json({ error: 'Du mangler administratoradgang' });
     req.guild = guild;
     next();
     } catch { res.status(503).json({ error: 'Adgang kunne ikke kontrolleres' }); }
@@ -102,6 +101,12 @@ function startWeb(client, { databaseReady = true, listen = true } = {}) {
   }));
   app.get('/api/guild/:gid/developer', auth, devAccess, wrap(async req =>
     (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments)}))));
+  app.get('/api/guild/:gid/developer/:id',auth,devAccess,wrap(async req=>{
+    const task=await developer.get(req.guild.id,Number(req.params.id));
+    if(!task) throw new Error('Sagen findes ikke');
+    return task;
+  }));
+  app.post('/api/guild/:gid/developer/:id/comments',auth,devAccess,wrap(req=>developer.comment(req.guild,Number(req.params.id),req.session.user.id,req.body.text,true)));
   app.post('/api/guild/:gid/developer', auth, devAccess, wrap(req => developer.create(req.guild,req.session.user.id,req.body)));
   app.put('/api/guild/:gid/developer/:id', auth, devAccess, wrap(req => developer.update(req.guild, Number(req.params.id),req.body,req.session.user.id)));
   app.post('/api/guild/:gid/developer/:id/sync', auth, devAccess, wrap(async req => {
@@ -136,8 +141,7 @@ function startWeb(client, { databaseReady = true, listen = true } = {}) {
 
   app.get('/api/guild/:gid', auth, devAccess, wrap(async (req) => {
     const g = req.guild;
-    const member = await g.members.fetch({user:req.session.user.id,force:true});
-    if (!member.permissions.has(PermissionFlagsBits.ManageGuild) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
+    if (!await isManager(g,req.session.user.id)) {
       return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[],voiceChannels:[],categories:[],roles:[],settings:{},stats:{}};
     }
     const channels = [...g.channels.cache.values()].sort((a, b) => a.rawPosition - b.rawPosition);

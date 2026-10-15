@@ -44,3 +44,24 @@ test('developer role is checked from current Discord membership',async()=>{
     assert.equal(await developer.canManage(guild,'dev'),false);
   } finally {await db.close();}
 });
+
+test('citizens and developers can exchange comments without exposing internal notes',async()=>{
+  await initDb();
+  try {
+    await settings.setModule('guild-a','developer',{enabled:true,roles:['developer']});
+    let notification;
+    const guild={id:'guild-a',members:{fetch:async({user})=>({permissions:{has:()=>false},roles:{cache:{has:id=>user==='dev'&&id==='developer'}}})},client:{users:{fetch:async()=>({send:async payload=>notification=payload})}}};
+    let task=await developer.create(guild,'citizen',{title:'Garage',description:'Fejl ved parkering'});
+    task=await developer.update(guild,task.id,{...task,notes:'Kun udviklere må se dette'},'dev');
+    task=await developer.comment(guild,task.id,'citizen','Det sker også i en anden garage');
+    assert.equal(task.comments[0].author_type,'citizen');
+    await assert.rejects(developer.comment(guild,task.id,'stranger','Læs min besked'),/Ingen adgang/);
+    await assert.rejects(developer.comment(guild,task.id,'citizen','Jeg er udvikler',true),/Ingen adgang/);
+    await assert.rejects(developer.comment({...guild,id:'guild-b'},task.id,'citizen','Anden server'),/findes ikke/);
+    task=await developer.comment(guild,task.id,'dev','Vi undersøger det. Kan du prøve igen?',true);
+    assert.equal(task.comments.length,2);
+    assert.match(notification.content,/Vi undersøger det/);
+    assert.ok(!JSON.stringify(notification).includes('Kun udviklere'));
+    await assert.rejects(developer.comment(guild,task.id,'dev','Spam',true),/fem sekunder/);
+  } finally {await db.close();}
+});

@@ -3,6 +3,7 @@
 const DEFAULTS = {
   developer: { enabled: false, roles: [] },
   general: {
+    adminRoles: [],
     prefix: '!',
   },
   moderation: {
