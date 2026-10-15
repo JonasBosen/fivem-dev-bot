@@ -6,7 +6,7 @@ const { SQLITE_SCHEMA, POSTGRES_SCHEMA } = require('./schema');
 function postgresSql(sql) {
   let position = 0;
   return sql.replace(/\?/g, () => `$${++position}`)
-    .replace(/\b(FROM|INTO|UPDATE|JOIN)\s+(settings|tickets|applications|levels|warnings|giveaways|stream_state|dev_tasks|dev_history|dev_images)\b/gi, '$1 allbot.$2')
+    .replace(/\b(FROM|INTO|UPDATE|JOIN)\s+(settings|tickets|applications|levels|warnings|giveaways|stream_state|dev_tasks|dev_history|dev_images|dev_comments)\b/gi, '$1 allbot.$2')
     .replace(/SET xp = xp \+/g, 'SET xp = levels.xp +');
 }
 function createPostgresAdapter(connection) {
@@ -20,7 +20,7 @@ function createPostgresAdapter(connection) {
         async get(...values) { return (await connection.query(converted, values)).rows[0]; },
         async all(...values) { return (await connection.query(converted, values)).rows; },
         async run(...values) {
-          const withId = /^INSERT INTO allbot\.(tickets|applications|warnings|giveaways|dev_tasks|dev_history)\b/i.test(converted);
+          const withId = /^INSERT INTO allbot\.(tickets|applications|warnings|giveaways|dev_tasks|dev_history|dev_comments)\b/i.test(converted);
           const result = await connection.query(converted + (withId ? ' RETURNING id' : ''), values);
           return { changes: result.rowCount, lastInsertRowid: result.rows[0]?.id };
         },

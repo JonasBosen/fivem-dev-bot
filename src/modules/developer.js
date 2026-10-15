@@ -1,9 +1,44 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { db, settings } = require('../db');
+const {isManager}=require('../access');
 const STATUS = { todo: 'Afventer behandling', doing: 'I gang', done: 'Færdig', rejected: 'Afvist' };
 const parse = r => r && ({ ...r, checklist: JSON.parse(r.checklist || '[]'), attachments: JSON.parse(r.attachments || '[]') });
-async function get(gid, id) { return parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id)); }
+async function canReport(guild,uid) {
+  const config=(await settings.get(guild.id)).developer;
+  if(!config.enabled) return false;
+  if(await canManage(guild,uid)) return true;
+  const roles=Array.isArray(config.reporterRoles)?config.reporterRoles:[];
+  if(!roles.length) return true;
+  const member=await guild.members.fetch({user:uid,force:true}).catch(()=>null);
+  return !!member&&roles.some(id=>member.roles.cache.has(id));
+}
+async function get(gid, id) {
+  const task = parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id));
+  if (task) task.comments = await db.prepare('SELECT * FROM dev_comments WHERE guild_id=? AND task_id=? ORDER BY id DESC LIMIT 100').all(gid,id);
+  return task;
+}
+async function comment(guild,id,uid,text,asDeveloper=false) {
+  if(typeof text !== 'string' || !text.trim() || text.length>1800) throw new Error('Skriv en besked på 1–1800 tegn');
+  const task = await get(guild.id,id);
+  if(!task) throw new Error('Sagen findes ikke');
+  if(asDeveloper ? !await canManage(guild,uid) : task.user_id!==uid) throw new Error('Ingen adgang til sagen');
+  if(!asDeveloper && !await canReport(guild,uid)) throw new Error('Borgerrollen kræves for at sende svar');
+  const recent = await db.prepare('SELECT id FROM dev_comments WHERE guild_id=? AND task_id=? AND user_id=? AND created_at>?').get(guild.id,id,uid,Date.now()-5000);
+  if(recent) throw new Error('Vent fem sekunder mellem beskeder');
+  await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,id,uid,asDeveloper?'developer':'citizen',text.trim(),Date.now());
+  await db.prepare('UPDATE dev_tasks SET updated_at=? WHERE guild_id=? AND id=?').run(Date.now(),guild.id,id);
+  const updated = await get(guild.id,id);
+  await sync(guild.client,updated);
+  if(asDeveloper && task.user_id!==uid) {
+    try {
+      const user=await guild.client.users.fetch(task.user_id);
+      await user.send({content:`💬 Svar på fejlmelding #${id}:\n${text.trim()}\n\nSvar på serveren med /fejlsvar id:${id} besked:dit svar`,allowedMentions:{parse:[]}});
+    } catch { await db.prepare('UPDATE dev_tasks SET sync_error=? WHERE guild_id=? AND id=?').run('Svaret er gemt. Borgerens private beskeder kunne ikke modtage det; svaret kan læses med /fejlstatus.',guild.id,id); }
+  }
+  return get(guild.id,id);
+}
 async function canManage(guild, uid) {
+  if(await isManager(guild,uid)) return true;
   const member = await guild.members.fetch({ user: uid, force: true }).catch(() => null);
   const config = (await settings.get(guild.id)).developer;
   return !!member && (member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild) || (Array.isArray(config.roles) ? config.roles : []).some(id => member.roles.cache.has(id)));
@@ -38,6 +73,8 @@ async function create(guild, uid, input, attachment) {
 function view(task) {
   const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Status opdateres fra det fælles dashboard' });
   if (task.attachments[0]) embed.setImage(task.attachments[0].url);
+  const latest = (task.comments || []).slice(0,3).reverse();
+  if(latest.length) embed.addFields({name:'Seneste beskeder',value:latest.map(c=>`${c.author_type==='developer'?'Udvikler':'Borger'}: ${c.body.slice(0,270)}`).join('\n\n').slice(0,1024)});
   return { embeds: [embed], allowedMentions: { parse: [] } };
 }
 async function sync(client, task) {
@@ -72,6 +109,7 @@ async function sendPanel(guild, channelId) {
 async function submit(i, title, description, attachment) {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
   await i.deferReply({ flags: MessageFlags.Ephemeral });
+  if(!await canReport(i.guild,i.user.id)) return i.editReply('Du skal have borgerrollen for at indsende en fejlmelding.');
   const recent = await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>?').get(i.guildId, i.user.id, Date.now() - 60000);
   if (recent) return i.editReply('Vent et minut mellem fejlmeldinger.');
   const task = await create(i.guild, i.user.id, { title, description }, attachment);
@@ -83,6 +121,11 @@ async function submit(i, title, description, attachment) {
   } catch { await i.editReply(`Fejlmelding #${task.id} er oprettet. Dine private beskeder er lukkede; følg sagen med /fejlstatus.`); }
 }
 async function onCommand(i) {
+  if (i.commandName === 'fejlsvar') {
+    await i.deferReply({flags:MessageFlags.Ephemeral});
+    const task=await comment(i.guild,i.options.getInteger('id'),i.user.id,i.options.getString('besked'));
+    return i.editReply({...view(task),content:'Dit svar er sendt til udviklertavlen.'});
+  }
   if (i.commandName === 'fejlstatus') {
     const t = await get(i.guildId, i.options.getInteger('id'));
     if (!t || (t.user_id !== i.user.id && !await canManage(i.guild, i.user.id))) return i.reply({ content: 'Sagen findes ikke eller du mangler adgang.', flags: MessageFlags.Ephemeral });
@@ -98,4 +141,4 @@ async function onInteraction(i) {
   }
   if (i.customId === 'dev:submit' && i.isModalSubmit()) return submit(i, i.fields.getTextInputValue('title'), i.fields.getTextInputValue('description'));
 }
-module.exports = { STATUS, get, create, update, sync, validate, canManage, sendPanel, onCommand, onInteraction };
+module.exports = { STATUS, get, create, update, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction };

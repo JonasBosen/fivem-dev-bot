@@ -9,6 +9,9 @@ const definitions = [
     .addStringOption(o=>o.setName('titel').setDescription('Kort titel').setRequired(true).setMaxLength(200))
     .addStringOption(o=>o.setName('beskrivelse').setDescription('Beskriv fejlen og hvordan den genskabes').setRequired(true).setMaxLength(4000))
     .addAttachmentOption(o=>o.setName('billede').setDescription('Billede af fejlen (maks. 10 MB)')),
+  new S().setName('fejlsvar').setDescription('Svar på din fejlmelding')
+    .addIntegerOption(o=>o.setName('id').setDescription('Sagsnummer').setRequired(true).setMinValue(1))
+    .addStringOption(o=>o.setName('besked').setDescription('Dit svar til udvikleren').setRequired(true).setMaxLength(1800)),
   new S().setName('fejlstatus').setDescription('Se status for din fejlmelding')
     .addIntegerOption(o=>o.setName('id').setDescription('Sagsnummer').setRequired(true).setMinValue(1)),
   // Moderation
