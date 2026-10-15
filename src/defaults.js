@@ -1,6 +1,7 @@
 // Standard-indstillinger for en ny server. Alt kan ændres i dashboardet.
 // Pladsholdere i beskeder: {user} {username} {server} {count} {level}
 const DEFAULTS = {
+  restart: require('./modules/restart-config').defaults,
   appearance: require('./modules/appearance').defaults,
   developer: { enabled: false, roles: [], reporterRoles: [] },
   general: {

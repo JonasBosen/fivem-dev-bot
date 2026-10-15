@@ -1,0 +1,24 @@
+const {settings}=require('../db');
+const {validate}=require('./restart-config');
+const locks=new Map();
+async function locked(id,fn){const prior=locks.get(id)||Promise.resolve();const job=prior.catch(()=>{}).then(fn);locks.set(id,job);try{return await job;}finally{if(locks.get(id)===job)locks.delete(id);}}
+const format=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Copenhagen',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+function parts(ms){return Object.fromEntries(format.formatToParts(ms).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));}
+function localEpoch(y,m,d,h,min){const target=Date.UTC(y,m-1,d,h,min);let guess=target;for(let i=0;i<4;i++){const p=parts(guess),offset=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second)-guess;const next=target-offset;if(next===guess)break;guess=next;}const p=parts(guess);return p.year===y&&p.month===m&&p.day===d&&p.hour===h&&p.minute===min?guess:null;}
+function nextRestart(times,now=Date.now()){const p=parts(now),candidates=[];for(let day=0;day<3;day++){const date=new Date(Date.UTC(p.year,p.month-1,p.day+day));for(const time of times){const [h,m]=time.split(':').map(Number),epoch=localEpoch(date.getUTCFullYear(),date.getUTCMonth()+1,date.getUTCDate(),h,m);if(epoch!==null&&epoch>now)candidates.push(epoch);}}return Math.min(...candidates);}
+function payload(cfg,event,now,ping=false){const sec=Math.max(0,Math.ceil((event-now)/1000)),minutes=Math.ceil(sec/60),ts=Math.floor(event/1000);return {content:(ping&&cfg.pingRole?'<@&'+cfg.pingRole+'>\n':'')+(sec?'🔄 **Planlagt servergenstart**\nDer er **'+minutes+' minut'+(minutes===1?'':'ter')+' tilbage.\nGenstart: <t:'+ts+':t> · <t:'+ts+':R>\nGem dit arbejde og afslut i god tid.':'🔄 **Det planlagte genstartstidspunkt er nået.**\nDette er en tidsplan; botten har ikke bekræftet, at serveren er genstartet.'),allowedMentions:{parse:[],roles:ping&&cfg.pingRole?[cfg.pingRole]:[]}};}
+async function channel(guild,id){const ch=await guild.channels.fetch(id);if(!ch?.isTextBased()||ch.isThread?.())throw new Error('Vælg en almindelig tekstkanal til genstartsvarsler');if(ch.permissionsFor){const {PermissionFlagsBits:P}=require('discord.js');const bot=guild.members.me||await guild.members.fetchMe();if(!ch.permissionsFor(bot)?.has([P.ViewChannel,P.SendMessages,P.ReadMessageHistory]))throw new Error('Botten skal kunne se kanalen, sende beskeder og læse beskedhistorik');}return ch;}
+async function configure(guild,input){const cfg=validate(input);return locked(guild.id,async()=>{if(cfg.enabled)await channel(guild,cfg.channel);const old=(await settings.get(guild.id)).restart;let state=old.state;if(state&&(!cfg.enabled||old.channel!==cfg.channel||JSON.stringify(old.times)!==JSON.stringify(cfg.times))){try{const ch=await channel(guild,old.channel),msg=await ch.messages.fetch(state.messageId);await msg.edit({content:'ℹ️ Genstartsplanen er ændret eller slået fra. Følg de nye genstartsvarsler.',allowedMentions:{parse:[]}});}catch{}state=null;}return (await settings.setModule(guild.id,'restart',{...cfg,state})).restart;});}
+async function tick(guild,now=Date.now()){return locked(guild.id,async()=>{const cfg=(await settings.get(guild.id)).restart;if(!cfg.enabled)return;let state=cfg.state;
+ if(state&&state.event<=now){if(!state.finished){const ch=await channel(guild,cfg.channel),msg=await ch.messages.fetch(state.messageId).catch(e=>{if(e.code===10008)return null;throw e;});if(msg)await msg.edit(payload(cfg,state.event,now));state={...state,finished:true};await settings.setModule(guild.id,'restart',{...cfg,state});return;}state=null;}
+ const event=nextRestart(cfg.times,now),remaining=(event-now)/60000;if(remaining>Math.max(...cfg.warningMinutes))return;
+ const ch=await channel(guild,cfg.channel);let fresh=!state||state.event!==event||state.finished;
+ if(fresh){const msg=await ch.send(payload(cfg,event,now,true));state={event,messageId:msg.id,sent:[],finished:false};}
+ else{const msg=await ch.messages.fetch(state.messageId).catch(e=>{if(e.code===10008)return null;throw e;});if(msg)await msg.edit(payload(cfg,event,now));else{const replacement=await ch.send(payload(cfg,event,now));state={...state,messageId:replacement.id};fresh=true;}}
+ const crossed=cfg.warningMinutes.filter(m=>remaining<=m).sort((a,b)=>a-b)[0];
+ if(crossed!==undefined&&!state.sent.includes(crossed)){if(!fresh)await ch.send(payload(cfg,event,now,true));state={...state,sent:[...state.sent,crossed]};fresh=true;}
+ if(fresh)await settings.setModule(guild.id,'restart',{...cfg,state});
+ });}
+let timer;
+function start(client){if(timer)return;const run=()=>Promise.all([...client.guilds.cache.values()].map(g=>tick(g).catch(e=>console.warn('[genstart]',g.id,e.message))));run();timer=setInterval(run,15000);timer.unref();}
+module.exports={validate,nextRestart,payload,configure,tick,start};

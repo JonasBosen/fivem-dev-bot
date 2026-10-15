@@ -50,6 +50,11 @@ async function refreshPanels(client,onlyGuild,previousText){
       const channel=await guild.channels.fetch(channelId);if(!channel?.isTextBased())continue;
       const saved=(await require('../db').settings.get(guild.id)).developer.reportPanel||require('./report-panel-config').defaults;
       const messages=await channel.messages.fetch({limit:100});
+      const history=await require('./developer-audit').list(guild.id);
+      for(const event of history.filter(e=>e.action==='panel_updated'&&e.details.channel===channelId&&e.details.messageId)){
+        if(messages.has(event.details.messageId))continue;
+        const old=await channel.messages.fetch(event.details.messageId).catch(e=>{if(e.code===10008)return null;throw e;});if(old)messages.set(old.id,old);
+      }
       for(const message of messages.values()){
         if(message.author.id!==client.user.id||!(message.content===saved.text||previousText&&message.content===previousText||message.components.some(row=>row.components?.some(c=>c.customId==='dev:report'||/^dev:(category|categories|level|custom):/.test(c.customId||'')))))continue;
         await message.edit(panel((await require('../db').settings.get(guild.id)).developer.reportPanel));updated++;

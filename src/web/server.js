@@ -216,6 +216,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});next();
   };
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
+    if(req.params.module==='restart')return require('../modules/restarts').configure(req.guild,req.body);
     if(req.params.module==='appearance')req.body=require('../modules/appearance').validate(req.body);
     if(req.params.module==='stream')req.body=stream.validateConfig(req.body);
     if (!Object.hasOwn(DEFAULTS, req.params.module)) throw new Error('Ukendt modul');
