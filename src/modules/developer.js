@@ -1,4 +1,4 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, LabelBuilder, FileUploadBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { db, settings } = require('../db');
 const {isManager}=require('../access');
 const STATUS = { todo: 'Afventer behandling', doing: 'I gang', done: 'Færdig', rejected: 'Afvist' };
@@ -56,7 +56,7 @@ function validate(input) {
 async function create(guild, uid, input, attachment) {
   const task = { title: input.title, description: input.description || '', status: 'todo', notes: '', checklist: [] };
   validate(task);
-  if (attachment && (!attachment.contentType?.startsWith('image/') || attachment.size > 10 * 1024 * 1024)) throw new Error('Billedet skal være under 10 MB');
+  if (attachment && (!attachment.contentType?.startsWith('image/') || attachment.size > 6 * 1024 * 1024)) throw new Error('Billedet skal være under 6 MB');
   let image;
   if (attachment) {
     const url = new URL(attachment.url);
@@ -109,7 +109,7 @@ async function sendPanel(guild, channelId) {
   if (!config.enabled) throw new Error('Aktivér udviklermodulet først');
   const channel = await guild.channels.fetch(channelId);
   if (!channel?.isTextBased()) throw new Error('Vælg en tekstkanal');
-  await channel.send({ content: '🛠️ **Fejlmelding til udvikleren**\nTryk for at beskrive fejlen. Brug også /fejl med et billede. Du får en privat statusbesked, der opdateres under behandlingen.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dev:report').setLabel('Meld en fejl').setStyle(ButtonStyle.Primary))] });
+  await channel.send({ content: '🛠️ **Fejlmelding til udvikleren**\nTryk for at beskrive fejlen. Du kan vedhæfte et billede direkte i formularen. Du får en privat statusbesked, der opdateres under behandlingen.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dev:report').setLabel('Meld en fejl').setStyle(ButtonStyle.Primary))] });
 }
 async function submit(i, title, description, attachment) {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
@@ -147,10 +147,11 @@ async function onCommand(i) {
 async function onInteraction(i) {
   if (i.customId === 'dev:report' && i.isButton()) {
     const modal = new ModalBuilder().setCustomId('dev:submit').setTitle('Meld en fejl');
-    for (const [id, label, max, style] of [['title','Kort titel',200,TextInputStyle.Short], ['description','Hvad skete der? Hvordan genskabes fejlen?',4000,TextInputStyle.Paragraph]]) modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setMaxLength(max).setStyle(style).setRequired(true)));
+    for (const [id, label, max, style] of [['title','Kort titel',200,TextInputStyle.Short], ['description','Hvad skete der? Hvordan genskabes fejlen?',4000,TextInputStyle.Paragraph]]) modal.addLabelComponents(new LabelBuilder().setLabel(label).setTextInputComponent(new TextInputBuilder().setCustomId(id).setMaxLength(max).setStyle(style).setRequired(true)));
+    modal.addLabelComponents(new LabelBuilder().setLabel('Vedhæft billede (valgfrit)').setDescription('PNG, JPG, GIF eller WebP · højst 6 MB').setFileUploadComponent(new FileUploadBuilder().setCustomId('image').setMinValues(0).setMaxValues(1).setRequired(false)));
     return i.showModal(modal);
   }
-  if (i.customId === 'dev:submit' && i.isModalSubmit()) return submit(i, i.fields.getTextInputValue('title'), i.fields.getTextInputValue('description'));
+  if (i.customId === 'dev:submit' && i.isModalSubmit()) return submit(i, i.fields.getTextInputValue('title'), i.fields.getTextInputValue('description'), i.fields.getUploadedFiles('image')?.first());
 }
 async function remove(guild,id,uid) {
   const task=await get(guild.id,id);
