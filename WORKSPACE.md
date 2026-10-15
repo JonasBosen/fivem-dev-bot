@@ -4,7 +4,7 @@ Udviklerpanelet kræver Discord-login, udvikler-/administratoradgang og en fæll
 
 Sager flyttes mellem Ikke taget, I gang, Afsluttet og Afvist ved træk og slip. Rækkefølge og arkivering gemmes i Supabase. Statusknapper fungerer også uden mus. Noter, tjeklister, billeder, kommentarer og planlægning følger sagen. Tidligere "done" vises som "closed". Borgeren svarer via knappen Svar på sagen i bottens DM eller /fejlsvar. Panelet kontrollerer nye svar hvert 7. sekund uden at overskrive lokale kladder.
 
-Indstillinger for siden gemmer fælles farver, HTTPS-baggrundsbillede, navn, hjørner og tæthed. Logs ligger nederst i menuen og har faner per modul. API-ændringer gemmer bruger-ID, tid og indhold uden hemmelige felter eller billeddata. Browserens knaptryk og navigation registreres også; netværksfejl kan forhindre enkelte browserhændelser i at nå serveren. Sagsloggen bevarer de fulde ændringer, også efter sletning. Der er ingen automatisk udløbsdato for logs. Udviklerlogs og billeder kræver også adgangskoden.
+Indstillinger for siden gemmer fælles farver, HTTPS-baggrundsbillede, navn, hjørner og tæthed. Den fælles Logs-side er fjernet. Kun udviklerområdet registrerer nye websitelogs og bevarer sin sagslog. Tidligere historiske databaseposter fra andre moduler er bevaret, men deres visning er fjernet. Streamforbindelsens aktuelle kontrolstatus gemmes fortsat til fejlsøgning. Udviklerændringer gemmer bruger-ID, tid og indhold uden hemmelige felter eller billeddata. Sagsloggen bevarer de fulde ændringer, også efter sletning. Der er ingen automatisk udløbsdato for logs. Udviklerlogs og billeder kræver også adgangskoden.
 
 ## Musik
 
@@ -28,3 +28,5 @@ Automatisk status kræver følgende Render Environment-felter:
 ## Verifikation
 
 npm test kontrollerer blandt andet rolle- og kodekontrol, låsning, sagsisolering, Discord-svarknap, streamoprydning, ping-afgrænsning og SQL-kompatibilitet. Lokal Edge-kontrol afprøver kodeformular, træk og slip, arkivering, streamfaner, design og logfaner. Eksterne livestreams og reel lyd er afhængige af brugerens platformkonti og er ikke dækket af disse lokale prøver.
+
+Borgerpanelet har kategoriknapper og prioriteringsknapper. Kategori → prioritet → beskrivelse/billede åbner formularen uden et ekstra Fortsæt-trin. Alle kategorier og egen tekst kan stadig vælges. Prioritet kan også vælges først. Lav er grøn, kritisk rød; mellem bruger en orange markør, da Discord ikke har en orange knapstil. Prioritetsfarven vises separat fra sagens behandlingsstatus i udviklerpanelet. Eksisterende panelbeskeder i registrerede fejlmeldingskanaler forsøges opdateret ved genstart.
