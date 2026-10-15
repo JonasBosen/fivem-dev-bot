@@ -1,4 +1,4 @@
-const defaults={title:'Alle bots samlet',accent:'#7c6cff',background:'#0f1115',panel:'#171a21',text:'#e6e8ee',backgroundImage:'',density:'comfortable',radius:12};
+const defaults={navigationOrder:[],title:'Alle bots samlet',accent:'#7c6cff',background:'#0f1115',panel:'#171a21',text:'#e6e8ee',backgroundImage:'',density:'comfortable',radius:12};
 function validate(input={}){
   const out={...defaults};
   for(const k of Object.keys(defaults))if(input[k]!==undefined)out[k]=input[k];
@@ -8,6 +8,8 @@ function validate(input={}){
   if(out.backgroundImage){const url=new URL(out.backgroundImage);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Brug et HTTPS-link til baggrundsbilledet');}
   if(!['comfortable','compact'].includes(out.density))throw new Error('Ukendt tæthed');
   if(!Number.isInteger(out.radius)||out.radius<0||out.radius>30)throw new Error('Hjørner skal være 0–30');
+  const allowed=['developer','overview','tickets','applications','music','moderation','welcome','levels','giveaways','stream','custom','appearance'];
+  if(!Array.isArray(out.navigationOrder)||out.navigationOrder.length>allowed.length||new Set(out.navigationOrder).size!==out.navigationOrder.length||out.navigationOrder.some(k=>!allowed.includes(k)))throw new Error('Ugyldig menurækkefølge');
   return out;
 }
 module.exports={defaults,validate};

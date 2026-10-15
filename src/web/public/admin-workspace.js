@@ -1,3 +1,4 @@
+function orderedPages(){const order=G?.settings?.appearance?.navigationOrder||[];return [...PAGES].sort((a,b)=>{const rank=id=>order.includes(id)?order.indexOf(id):order.length+PAGES.findIndex(p=>p[0]===id);return rank(a[0])-rank(b[0]);});}
 function applyAppearance(input={}){
   const cfg={title:'Alle bots samlet',accent:'#7c6cff',background:'#0f1115',panel:'#171a21',text:'#e6e8ee',radius:12,density:'comfortable',backgroundImage:'',...input};
   const root=document.documentElement;
@@ -11,9 +12,15 @@ function applyAppearance(input={}){
 async function renderAppearance(){
   const draft=structuredClone(G.settings.appearance);
   const preview=()=>applyAppearance(draft);
+  const order=orderedPages().map(p=>p[0]),orderList=h('div',{class:'nav-order-list'});let dragged=null;
+  function move(from,to){if(from===to||from<0||to<0||to>=order.length)return;order.splice(to,0,order.splice(from,1)[0]);draft.navigationOrder=[...order];drawOrder();}
+  function drawOrder(){orderList.replaceChildren(...order.map((id,i)=>h('div',{class:'nav-order-row',draggable:'true','data-page':id,ondragstart:e=>{dragged=id;e.dataTransfer.setData('text/plain',id);},ondragend:()=>{dragged=null;},ondragover:e=>e.preventDefault(),ondrop:e=>{e.preventDefault();if(dragged)move(order.indexOf(dragged),i);}},h('span',{},'⠿ '+PAGES.find(p=>p[0]===id).slice(1).join(' ')),h('div',{class:'actions'},h('button',{type:'button',class:'btn sec sm',disabled:i===0,'aria-label':'Flyt '+id+' op',onclick:()=>move(i,i-1)},'↑'),h('button',{type:'button',class:'btn sec sm',disabled:i===order.length-1,'aria-label':'Flyt '+id+' ned',onclick:()=>move(i,i+1)},'↓')))));}
+  drawOrder();
+  const navigation=h('div',{class:'card'},h('h2',{},'Rækkefølge i venstremenuen'),h('p',{class:'muted'},'Træk punkterne op og ned, eller brug pilene. Rækkefølgen gemmes sammen med designet og deles på serverens dashboard.'),orderList,h('button',{class:'btn',onclick:run(async()=>{G.settings.appearance=await api('/api/guild/'+G.id+'/settings/appearance',{method:'PUT',body:draft});toast('Menurækkefølgen er gemt');await route();})},'Gem rækkefølge'));
+
   const form=h('div',{class:'grid'},field({k:'title',l:'Sidens navn'},draft),...['accent','background','panel','text'].map((k,i)=>h('label',{class:'f'},h('span',{},['Accentfarve','Baggrundsfarve','Panelfarve','Tekstfarve'][i]),h('input',{type:'color',value:draft[k],oninput:e=>{draft[k]=e.target.value;preview();}}))),field({k:'backgroundImage',l:'Baggrundsbillede (HTTPS-link)'},draft),field({k:'radius',l:'Afrunding på paneler (0–30)',t:'number',min:0,max:30},draft),h('label',{class:'f'},'Tæthed',h('select',{onchange:e=>{draft.density=e.target.value;preview();}},...['comfortable','compact'].map(v=>h('option',{value:v,selected:draft.density===v},v==='compact'?'Kompakt':'Luftig')))));
   form.addEventListener('input',preview);
-  return [h('div',{class:'card workspace-hero'},h('span',{class:'workspace-eyebrow'},'DIT DASHBOARD'),h('h2',{},'Indstillinger for siden'),h('p',{class:'muted'},'Designet deles af serverens dashboard. Prøv farver og baggrund her; gem for at gøre dem fælles.'),form,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{G.settings.appearance=await api(`/api/guild/${G.id}/settings/appearance`,{method:'PUT',body:draft});preview();toast('Sidens design er gemt');})},'Gem design'),h('button',{class:'btn sec',onclick:()=>{applyAppearance(G.settings.appearance);toast('Gemt design er vist igen');}},'Vis gemt design')))];
+  return [h('div',{class:'card workspace-hero'},h('span',{class:'workspace-eyebrow'},'DIT DASHBOARD'),h('h2',{},'Indstillinger for siden'),h('p',{class:'muted'},'Designet deles af serverens dashboard. Prøv farver og baggrund her; gem for at gøre dem fælles.'),form,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{G.settings.appearance=await api(`/api/guild/${G.id}/settings/appearance`,{method:'PUT',body:draft});preview();toast('Design og menurækkefølge er gemt');await route();})},'Gem design'),h('button',{class:'btn sec',onclick:()=>{applyAppearance(G.settings.appearance);toast('Gemt design er vist igen');}},'Vis gemt design'))),navigation];
 }
 async function renderStreamWorkspace(){
   let accounts=await api(`/api/guild/${G.id}/stream/accounts`);
