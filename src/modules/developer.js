@@ -136,7 +136,7 @@ async function sendPanel(guild, channelId) {
   if (!config.enabled) throw new Error('Aktivér udviklermodulet først');
   const channel = await guild.channels.fetch(channelId);
   if (!channel?.isTextBased()) throw new Error('Vælg en tekstkanal');
-  await channel.send(require('./report-panel').panel());
+  await channel.send(require('./report-panel').panel(config.reportPanel));
 }
 async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='') {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
@@ -174,7 +174,7 @@ async function onCommand(i) {
 }
 async function onInteraction(i) {
   if(i.customId==='dev:report'&&i.isButton())return i.reply(require('./report-panel').categoryMenu());
-  if(/^dev:(category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
+  if(/^dev:(custom|category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
   if(/^dev:(pickcategory|pickpriority|continue):/.test(i.customId))return require('./report-form').interact(i);
   if(i.customId.startsWith('dev:submit')&&i.isModalSubmit()){
     const [, ,category='bug',priority='low']=i.customId.split(':');

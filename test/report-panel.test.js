@@ -1,12 +1,9 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {ButtonStyle}=require('discord.js'),panel=require('../src/modules/report-panel');
-test('public report panel has category buttons and distinct low, medium and critical priority actions within Discord limits',()=>{
-  const data=panel.panel(),rows=data.components.map(r=>r.toJSON());assert.ok(rows.length<=5);assert.ok(rows.every(r=>r.components.length<=5));
-  const buttons=rows.flatMap(r=>r.components);assert.ok(buttons.some(b=>b.custom_id==='dev:category:mlo'));assert.ok(buttons.some(b=>b.custom_id==='dev:category:vehicle'));
-  assert.equal(buttons.find(b=>b.custom_id==='dev:level:choose:low').style,ButtonStyle.Success);
-  assert.equal(buttons.find(b=>b.custom_id==='dev:level:choose:critical').style,ButtonStyle.Danger);
-  assert.match(buttons.find(b=>b.custom_id==='dev:level:choose:high').label,/🟠/);
-  assert.equal(new Set(buttons.map(b=>b.custom_id)).size,buttons.length);
+test('report panel renders only configured buttons with safe mention handling',()=>{
+ const cfg={text:'Mit panel',buttons:[{label:'Min MLO-knap',emoji:'🏠',color:'green',category:'mlo'},{label:'Kritisk',emoji:'🔴',color:'red',category:'choose'}]};
+ const data=panel.panel(cfg),buttons=data.components.flatMap(r=>r.toJSON().components);assert.equal(buttons.length,2);assert.equal(buttons[0].label,'Min MLO-knap');assert.equal(buttons[0].style,ButtonStyle.Success);assert.equal(buttons[1].style,ButtonStyle.Danger);assert.deepEqual(data.allowedMentions,{parse:[]});assert.equal(panel.panel({text:'Uden knapper',buttons:[]}).components.length,0);
+ const validate=require('../src/modules/report-panel-config').validate;assert.throws(()=>validate({...cfg,buttons:[{...cfg.buttons[0],color:'orange'}]}));assert.throws(()=>validate({...cfg,buttons:Array(26).fill(cfg.buttons[0])}));assert.throws(()=>validate({...cfg,buttons:[{...cfg.buttons[0],emoji:'not an emoji'}]}));
 });
 test('category then priority opens the correct image-capable report form without another continue step',async()=>{
   let response,modal;
