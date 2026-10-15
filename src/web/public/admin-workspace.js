@@ -15,22 +15,6 @@ async function renderAppearance(){
   form.addEventListener('input',preview);
   return [h('div',{class:'card workspace-hero'},h('span',{class:'workspace-eyebrow'},'DIT DASHBOARD'),h('h2',{},'Indstillinger for siden'),h('p',{class:'muted'},'Designet deles af serverens dashboard. Prøv farver og baggrund her; gem for at gøre dem fælles.'),form,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{G.settings.appearance=await api(`/api/guild/${G.id}/settings/appearance`,{method:'PUT',body:draft});preview();toast('Sidens design er gemt');})},'Gem design'),h('button',{class:'btn sec',onclick:()=>{applyAppearance(G.settings.appearance);toast('Gemt design er vist igen');}},'Vis gemt design')))];
 }
-async function renderSiteLogs(){
-  const categories=PAGES.filter(p=>p[0]!=='logs').map(([id,icon,label])=>({id,icon,label}));
-  categories.push({id:'general',icon:'⚙',label:'Generelt'},{id:'verification',icon:'✓',label:'Verificering'});
-  const sections=categories.map(c=>{
-    const body=h('div'),count=h('p',{class:'muted'});let next=null,loaded=false,busy=false,n=0;
-    const more=h('button',{class:'btn sec',onclick:run(()=>load(false))},'Hent ældre logs');more.hidden=true;
-    async function load(reset){if(busy)return;busy=true;try{
-      const result=await api(`/api/guild/${G.id}/audit/${c.id}`+(!reset&&next?'?before='+next:''));
-      if(reset){body.replaceChildren();n=0;}
-      body.append(...result.events.map(e=>h('details',{class:'work-comment'},h('summary',{},date(e.created_at)+' · '+e.user_id+' · '+e.action),h('pre',{class:'audit-json'},JSON.stringify(e.details,null,2)))));
-      n+=result.events.length;next=result.next;more.hidden=!next;loaded=true;count.textContent=n+' hændelser indlæst';
-    }finally{busy=false;}}
-    return {...c,content:[h('div',{class:'card'},h('h2',{},c.label+' · historik'),h('p',{class:'muted'},'Bruger-ID, tidspunkt, navigation og gemte ændringer. Historikken slettes ikke automatisk.'),c.id==='developer'&&h('a',{href:`#/g/${G.id}/developer`,class:'btn sec'},'Åbn også detaljeret sagslog'),h('button',{class:'btn sec',onclick:run(()=>load(true))},'Opdatér log'),count,body,more)],onOpen:()=>{if(!loaded)load(true).catch(e=>toast(e.message,true));}};
-  });
-  return [dashboardTabs(sections,G.id+'-site-logs')];
-}
 async function renderStreamWorkspace(){
   let accounts=await api(`/api/guild/${G.id}/stream/accounts`);
   const status=await api(`/api/guild/${G.id}/stream/status`);
@@ -71,7 +55,7 @@ async function renderStreamWorkspace(){
 document.addEventListener('click',event=>{
   if(!G||!me)return;
   const el=event.target.closest('button,a,summary');if(!el||el.closest('#toast'))return;
-  const module=location.hash.split('/')[3]||'overview';
+  const module=location.hash.split('/')[3]||'overview';if(module!=='developer')return;
   const action=(el.getAttribute('aria-label')||el.textContent||'').trim().slice(0,100);if(!action)return;
   api(`/api/guild/${G.id}/audit/interaction`,{method:'POST',body:{module,action}}).catch(()=>{});
 });

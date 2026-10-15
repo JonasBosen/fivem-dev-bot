@@ -95,7 +95,8 @@ async function create(guild, uid, input, attachment) {
 function view(task) {
   const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, closed: 0x10b981, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
   if(task.planning?.scheduledStart){const format=new Intl.DateTimeFormat('da-DK',{timeZone:'Europe/Copenhagen',weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});embed.addFields({name:'Planlagt behandling · dansk tid',value:format.format(new Date(task.planning.scheduledStart))+' → '+format.format(new Date(task.planning.scheduledEnd))});}
-  if(task.planning?.priority==='critical')embed.addFields({name:'Prioritet',value:'🔴 Kritisk'});
+  const priorityStyle={low:{label:'🟢 Lav',color:0x22c55e},high:{label:'🟠 Mellem / vigtig',color:0xf59e0b},critical:{label:'🔴 Kritisk',color:0xef4444}}[task.planning?.priority];
+  if(priorityStyle){embed.addFields({name:'Valgt prioritet',value:priorityStyle.label});if(task.status==='todo')embed.setColor(priorityStyle.color);}
   const categoryLabel=require('./report-categories').label(task.planning);
   if(categoryLabel)embed.addFields({name:'Kategori',value:categoryLabel});
   if(task.planning?.reportPriority)embed.addFields({name:'Din vurdering af vigtighed',value:({low:'Lav',high:'Vigtig',critical:'Kritisk',custom:task.planning.reportPriorityCustom})[task.planning.reportPriority]||'Ikke angivet'});
@@ -135,7 +136,7 @@ async function sendPanel(guild, channelId) {
   if (!config.enabled) throw new Error('Aktivér udviklermodulet først');
   const channel = await guild.channels.fetch(channelId);
   if (!channel?.isTextBased()) throw new Error('Vælg en tekstkanal');
-  await channel.send({ content: '🛠️ **Fejlmelding til udvikleren**\nTryk for at beskrive fejlen. Du kan vedhæfte et billede direkte i formularen. Du får en privat statusbesked, der opdateres under behandlingen.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dev:report').setLabel('Meld en fejl').setStyle(ButtonStyle.Primary))] });
+  await channel.send(require('./report-panel').panel());
 }
 async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='') {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
@@ -172,7 +173,8 @@ async function onCommand(i) {
   return submit(i, i.options.getString('titel'), i.options.getString('beskrivelse'), i.options.getAttachment('billede'),i.options.getString('kategori')||'bug',i.options.getString('andet')||'',i.options.getString('vigtighed')||'low',i.options.getString('egen_vigtighed')||'');
 }
 async function onInteraction(i) {
-  if(i.customId==='dev:report'&&i.isButton())return require('./report-form').begin(i);
+  if(i.customId==='dev:report'&&i.isButton())return i.reply(require('./report-panel').categoryMenu());
+  if(/^dev:(category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
   if(/^dev:(pickcategory|pickpriority|continue):/.test(i.customId))return require('./report-form').interact(i);
   if(i.customId.startsWith('dev:submit')&&i.isModalSubmit()){
     const [, ,category='bug',priority='low']=i.customId.split(':');

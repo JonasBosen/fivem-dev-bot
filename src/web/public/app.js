@@ -211,12 +211,12 @@ function panelCard(type, text) {
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Tickets'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Levels'], ['giveaways', '🎉', 'Giveaways'], ['stream', '🔴', 'Stream-alerts'], ['custom', '💬', 'Custom commands'], ['appearance','🎨','Indstillinger for siden'], ['logs','≡','Logs'],
+  ['levels', '⭐', 'Levels'], ['giveaways', '🎉', 'Giveaways'], ['stream', '🔴', 'Stream-alerts'], ['custom', '💬', 'Custom commands'], ['appearance','🎨','Indstillinger for siden'],
 ];
 
 const pages = {
   async appearance(){return renderAppearance();},
-  async logs(){return renderSiteLogs();},
+
   async developer() { return renderDeveloperWorkspace(); },
   async overview() {
     const s = G.stats;
@@ -387,6 +387,7 @@ async function route() {
   window.developerCleanup?.();window.developerCleanup=null;
   clearInterval(pollTimer);
   const [, , gid, page = 'overview'] = location.hash.split('/');
+  if(gid&&page==='logs'){sessionStorage.setItem('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid) return renderGuildList();
   try {
     if (!G || G.id !== gid) G = await api(`/api/guild/${gid}`);

@@ -20,8 +20,8 @@ test('stream accounts require current role and live alerts survive restart state
     hasRole=false;await stream.check({guilds:{cache:new Map([[guild.id,guild]])}});assert.equal(deleted.length,2);
     await assert.rejects(stream.link(guild,'twitch',uid,'other',uid),/mangler/);
     const history=(await audit.page(guild.id,'stream')).events;
-    assert.equal(history.filter(e=>e.action!=='stream_check').length,5);
-    assert.ok(history.some(e=>e.action==='stream_check'&&e.details.state==='role_missing'));
+    assert.equal(history.length,0);
+    const diagnostic=await db.prepare('SELECT value FROM stream_state WHERE guild_id=? AND key=?').get(guild.id,'diagnostic:twitch:'+uid);assert.equal(JSON.parse(diagnostic.value).state,'role_missing');
     assert.equal((await audit.page('other','stream')).events.length,0);
   }finally{await db.close();}
 });
@@ -37,8 +37,8 @@ test('stream API outages are errors rather than offline status; configuration re
 });
 test('site audit removes credentials and keeps persistent separate module logs',async()=>{
   await initDb();try{
-    await audit.record('g','owner','music','settings_changed',{token:'private',nested:{clientSecret:'secret'},title:'Music',data:'base64'});
-    const row=(await audit.page('g','music')).events[0];assert.equal(row.user_id,'owner');assert.equal(row.details.token,'[skjult]');assert.equal(row.details.nested.clientSecret,'[skjult]');assert.equal(row.details.title,'Music');
+    await audit.record('g','owner','developer','settings_changed',{token:'private',nested:{clientSecret:'secret'},title:'Music',data:'base64'});
+    const row=(await audit.page('g','developer')).events[0];assert.equal(row.user_id,'owner');assert.equal(row.details.token,'[skjult]');assert.equal(row.details.nested.clientSecret,'[skjult]');assert.equal(row.details.title,'Music');
     assert.equal((await audit.page('g','stream')).events.length,0);
   }finally{await db.close();}
 });
