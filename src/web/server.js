@@ -11,7 +11,7 @@ const tickets = require('../modules/tickets');
 const applications = require('../modules/applications');
 const giveaways = require('../modules/giveaways');
 const community = require('../modules/community');
-const music = require('../modules/music');
+const music = require('../modules/music-fleet');
 const { parseDuration } = require('../util');
 
 const {isManager}=require('../access');
@@ -238,15 +238,23 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
 
   // Musik
-  app.get('/api/guild/:gid/music', auth, guildAccess, wrap((req) => music.state(req.guild.id)));
+  app.get('/api/guild/:gid/music/bots',auth,guildAccess,wrap(req=>music.list(req.guild.id)));
+  app.post('/api/guild/:gid/music/bots',auth,guildAccess,wrap(async req=>{
+    if(typeof req.body.id!=='string'||!/^\d{17,20}$/.test(req.body.id))throw new Error('Indsæt bot-applikationens Application ID');
+    if(typeof req.body.name!=='string'||!req.body.name.trim()||req.body.name.length>80)throw new Error('Skriv et navn på 1–80 tegn');
+    const cfg=(await settings.get(req.guild.id)).music;
+    const bots=[...(cfg.bots||[]).filter(b=>b.id!==req.body.id),{id:req.body.id,name:req.body.name.trim()}];
+    await settings.setModule(req.guild.id,'music',{...cfg,bots});return bots;
+  }));
+  app.get('/api/guild/:gid/music', auth, guildAccess, wrap((req) => music.state(req.guild.id,req.query.bot)));
   app.post('/api/guild/:gid/music/play', auth, guildAccess, wrap(async (req) => {
     const vc = req.guild.channels.cache.get(req.body.voiceChannel);
     if (!vc?.isVoiceBased()) throw new Error('Vælg en talekanal');
     const text = req.guild.channels.cache.get(req.body.textChannel) || null;
-    const { track } = await music.play(req.guild, vc, req.body.query, text, null);
-    return { title: track.title };
+    const { track,botId } = await music.play(req.guild.id,vc.id,req.body.query,text?.id,null,req.body.bot||undefined);
+    return { title: track.title,botId };
   }));
-  app.post('/api/guild/:gid/music/:action', auth, guildAccess, wrap((req) => { music.control(req.guild.id, req.params.action, req.body.value); }));
+  app.post('/api/guild/:gid/music/:action', auth, guildAccess, wrap((req) => { music.control(req.guild.id,req.body.bot||undefined,req.params.action,req.body.value); }));
 
   // Levels og moderation
   app.get('/api/guild/:gid/leaderboard', auth, guildAccess, wrap(async (req) =>

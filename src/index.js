@@ -10,6 +10,7 @@ const giveaways = require('./modules/giveaways');
 const community = require('./modules/community');
 const moderation = require('./modules/moderation');
 const music = require('./modules/music');
+const musicFleet=require('./modules/music-fleet');
 const stream = require('./modules/stream');
 const { startWeb } = require('./web/server');
 const { initDb } = require('./db');
@@ -28,14 +29,14 @@ const commandRoutes = {
   fejlbillede: developer, fejlsvar: developer, fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
   rank: community, leaderboard: community,
   ticket: tickets, application: applications, giveaway: giveaways,
-  play: music, skip: music, pause: music, resume: music, stop: music, shuffle: music, queue: music, nowplaying: music, volume: music, loop: music,
+  play: musicFleet, skip: musicFleet, pause: musicFleet, resume: musicFleet, stop: musicFleet, shuffle: musicFleet, queue: musicFleet, nowplaying: musicFleet, volume: musicFleet, loop: musicFleet,
 };
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] Logget ind som ${c.user.tag} på ${c.guilds.cache.size} servere`);
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
-  await music.init(c).catch((e) => console.error('[musik]', e.message));
+  await music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
   giveaways.startTimer(c);
   stream.startPolling(c);
 });

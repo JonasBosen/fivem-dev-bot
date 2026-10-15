@@ -34,3 +34,16 @@ Før gamle bots udfases: afprøv ansøgning, ticket og transcript, moderation, m
 Når SQL ændres: kør `npm run db:migration`, gennemse migrationen og anvend den før deployment.
 
 `npm test` kontrollerer PostgreSQL-skema og SQL, datalagring, serveradskillelse, statusskift, tjeklister, samtidige ændringer, rollefjernelse, intern noteafskærmning, SQL-injektion, RPC-rettigheder og Discord-synkroniseringsfejl. Live Discord, Supabase og web-login kræver de rigtige tilslutninger.
+
+
+## Borgerindmelding og vigtighed
+
+Knappen Meld en fejl starter en privat vælger med 25 FiveM-kategorier og Lav/Vigtig/Kritisk/Egen vurdering. Fortsæt åbner titel, beskrivelse og valgfrit billede. Andet og Egen vurdering giver hver sit obligatoriske tekstfelt. Valg og tekster gemmes på sagen og i aktivitetsloggen. Borgerens vurdering bevares særskilt fra udviklerens redigerbare prioritet.
+
+## Flere musikbots
+
+Musik → Musikbots registrerer et navn og et Discord Application ID. Invitér hver bot og gem dens token på Render i MUSIC_BOT_<APPLICATION_ID>_TOKEN; valgfrit navn i MUSIC_BOT_<APPLICATION_ID>_NAME. Genstart tjenesten efter ændringer. Tokens indsamles ikke af dashboardet og gemmes ikke i Supabase.
+
+Hver token opretter sin egen Discord-klient og afspiller med adskilte køer. /play vælger botten i brugerens talekanal eller en ledig bot. En optaget bot flyttes ikke til en anden kanal. Pause/skip/kø/volumen i Discord følger brugerens egen talekanal. Dashboardet kan vælge en bestemt bot. Ingen fast grænse er lagt ind; samtidige streams er begrænset af hostingkapacitet og Discord.
+
+Fordeling er automatisk testet, også med 150 kandidater. Faktisk lyd i flere talekanaler er ikke liveafprøvet, da ekstra botkonti/tokens ikke er tilsluttet. YouTube kræver fortsat en særskilt extractor. Andre musiktjenesters links kan være søge-/metadatahenvisninger og garanterer ikke afspilningsadgang.

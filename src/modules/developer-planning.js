@@ -1,5 +1,5 @@
 const {db}=require('../db');
-const defaults={kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
+const defaults={reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
 function validate(input={}) {
   const out={...defaults};
   for(const key of Object.keys(defaults))if(input[key]!==undefined)out[key]=input[key];
@@ -8,6 +8,8 @@ function validate(input={}) {
   if(!['test','live','local'].includes(out.environment))throw new Error('Ukendt servermiljø');
   for(const key of ['estimateHours','spentHours'])if(typeof out[key]!=='number'||!Number.isFinite(out[key])||out[key]<0||out[key]>10000)throw new Error('Timer skal være mellem 0 og 10000');
   for(const key of ['assignee','resource','deadline','coordinates','reproduction','expected','actual','testPlan','release','commitUrl'])if(typeof out[key]!=='string'||out[key].length>3000)throw new Error('Ugyldigt planlægningsfelt: '+key);
+  if(out.reportPriority) require('./report-form').importance(out.reportPriority,out.reportPriorityCustom);
+  if(out.reportCategory) require('./report-categories').normalize(out.reportCategory,out.reportCategoryCustom);
   if(out.deadline&&!/^\d{4}-\d{2}-\d{2}$/.test(out.deadline))throw new Error('Deadline skal være en dato');
   if(out.commitUrl&&!/^https:\/\//i.test(out.commitUrl))throw new Error('Commit-link skal starte med https://');
   return out;
