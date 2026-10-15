@@ -1,5 +1,7 @@
 async function renderDeveloperWorkspace() {
   const base=`/api/guild/${G.id}/developer`;
+  const reportCategories=await api('/report-categories.json');
+  const reportLabel=p=>p?.reportCategory==='other'?p.reportCategoryCustom:reportCategories.find(c=>c.id===p?.reportCategory)?.label||'';
   let tasks=await api(base), selected=null, dirty=false, saving=false;
   const states={todo:'Ikke taget',doing:'Taget · I gang',done:'Færdig',closed:'Afsluttet',rejected:'Afvist'};
   const board=h('div',{class:'work-board'}), detail=h('section',{class:'card work-detail'},h('h2',{},'Dit arbejdsområde'),h('p',{class:'muted'},'Åbn en sag eller opret en opgave. Her kan du gemme noter, billeder og tjeklister.'));
@@ -8,6 +10,7 @@ async function renderDeveloperWorkspace() {
   const kinds={bug:'Fejl',feature:'Ny funktion',optimization:'Optimering',mapping:'Mapping / MLO',vehicle:'Køretøj',ui:'UI / NUI',maintenance:'Vedligehold'};
   const priorityFilter=h('select',{onchange:()=>draw()},h('option',{value:''},'Alle prioriteter'),...Object.entries(priorities).map(([v,l])=>h('option',{value:v},l)));
   const typeFilter=h('select',{onchange:()=>draw()},h('option',{value:''},'Alle typer'),...Object.entries(kinds).map(([v,l])=>h('option',{value:v},l)));
+  const categoryFilter=h('select',{onchange:()=>draw()},h('option',{value:''},'Alle borgerkategorier'),...reportCategories.map(c=>h('option',{value:c.id},c.label)));
   const counts=h('div',{class:'work-counts'}), saveInfo=h('span',{class:'muted'},'Alle opgaver gemmes i den fælles database');
   const setDirty=()=>{dirty=true;saveInfo.textContent='Ændringer er ikke gemt';saveInfo.className='work-unsaved';};
   const unload=e=>{if(dirty){e.preventDefault();e.returnValue='';}};
@@ -21,11 +24,11 @@ async function renderDeveloperWorkspace() {
     counts.append(h('span',{class:'work-count status-doing'},active.filter(t=>t.planning?.priority==='critical').length,h('small',{},'Kritiske åbne')),h('span',{class:'work-count status-todo'},tasks.reduce((n,t)=>n+(t.planning?.spentHours||0),0).toFixed(1)+' t',h('small',{},'Registreret tid')));
     const query=search.value.trim().toLowerCase();
     board.replaceChildren(...Object.entries(states).map(([state,label])=>{
-      const items=tasks.filter(t=>t.status===state&&(!priorityFilter.value||t.planning?.priority===priorityFilter.value)&&(!typeFilter.value||t.planning?.kind===typeFilter.value)&&`${t.id} ${t.title} ${t.description} ${t.planning?.resource||''} ${t.planning?.assignee||''}`.toLowerCase().includes(query));
+      const items=tasks.filter(t=>t.status===state&&(!priorityFilter.value||t.planning?.priority===priorityFilter.value)&&(!typeFilter.value||t.planning?.kind===typeFilter.value)&&(!categoryFilter.value||t.planning?.reportCategory===categoryFilter.value)&&`${t.id} ${t.title} ${t.description} ${t.planning?.resource||''} ${t.planning?.assignee||''} ${reportLabel(t.planning)}`.toLowerCase().includes(query));
       return h('section',{class:`work-lane status-${state}`},h('h3',{},h('span',{class:'work-dot'}),label,h('span',{class:'work-total'},items.length)),
         ...(items.length?items.map(t=>h('button',{class:`work-ticket status-${state}${selected===t.id?' selected':''}`,onclick:run(async()=>{if(canLeave())await open(t.id);})},
           h('div',{class:'work-ticket-top'},h('span',{},`#${t.id}`),h('span',{'aria-label':states[state]},['done','closed'].includes(state)?'☑':state==='doing'?'◩':'☐')),
-          h('b',{},t.title),h('small',{class:'work-planning-badges'},[priorities[t.planning?.priority]||'Normal',t.planning?.resource,t.planning?.assignee,t.planning?.deadline?'Frist: '+t.planning.deadline:''].filter(Boolean).join(' · ')),h('p',{},t.description.slice(0,110)),h('div',{class:'work-ticket-bottom'},`${t.checklist.filter(c=>c.done).length}/${t.checklist.length} punkter`,h('small',{},date(t.updated_at))))) : [h('p',{class:'muted'},'Ingen opgaver her')]) );
+          h('b',{},t.title),h('small',{class:'work-planning-badges'},[reportLabel(t.planning),priorities[t.planning?.priority]||'Normal',t.planning?.resource,t.planning?.assignee,t.planning?.deadline?'Frist: '+t.planning.deadline:''].filter(Boolean).join(' · ')),h('p',{},t.description.slice(0,110)),h('div',{class:'work-ticket-bottom'},`${t.checklist.filter(c=>c.done).length}/${t.checklist.length} punkter`,h('small',{},date(t.updated_at))))) : [h('p',{class:'muted'},'Ingen opgaver her')]) );
     }));
   }
   async function refresh(){tasks=await api(base);draw();}
@@ -36,7 +39,7 @@ async function renderDeveloperWorkspace() {
     draft.planning ||= {};
     const planning=draft.planning;
     const selectField=(key,label,options)=>h('label',{class:'f'},h('span',{},label),h('select',{onchange:e=>{planning[key]=e.target.value;setDirty();}},...Object.entries(options).map(([v,l])=>h('option',{value:v,selected:planning[key]===v},l))));
-    const planFields=h('div',{class:'grid'},selectField('kind','Type',kinds),selectField('priority','Prioritet',priorities),selectField('environment','Miljø',{test:'Testserver',live:'Live-server',local:'Lokal udvikling'}),
+    const planFields=h('div',{class:'grid'},selectField('reportCategory','Borgerens kategori',{'':'Ikke kategoriseret',...Object.fromEntries(reportCategories.map(c=>[c.id,c.label]))}),field({k:'reportCategoryCustom',l:'Egen kategori (ved Andet)'},planning),selectField('kind','Type',kinds),selectField('priority','Prioritet',priorities),selectField('environment','Miljø',{test:'Testserver',live:'Live-server',local:'Lokal udvikling'}),
       field({k:'assignee',l:'Ansvarlig udvikler / team'},planning),field({k:'resource',l:'Resource / script (fx qb-garages)'},planning),field({k:'release',l:'Release / milepæl'},planning),
       h('label',{class:'f'},h('span',{},'Deadline'),h('input',{type:'date',value:planning.deadline||'',oninput:e=>{planning.deadline=e.target.value;setDirty();}})),
       field({k:'estimateHours',l:'Forventet tid (timer)',t:'number',min:0,max:10000},planning),field({k:'spentHours',l:'Brugt tid (timer)',t:'number',min:0,max:10000},planning),
@@ -126,7 +129,7 @@ async function renderDeveloperWorkspace() {
   const panelChannel=h('select',{},...optionList(G.channels,'# ','Vælg Discord-kanal'));
   const discord=h('div',{class:'card'},h('span',{class:'workspace-eyebrow'},'DISCORD & OPSÆTNING'),h('h2',{},'Fejlmeldingspanel til borgerne'),h('p',{class:'muted'},'Vælg en kanal og send panelet. Borgeren kan indsende titel, beskrivelse og billede. Sagen lander på FiveM-arbejdstavlen.'),panelChannel,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{if(!panelChannel.value)throw new Error('Vælg en kanal');await api(base+'/panel',{method:'POST',body:{channel:panelChannel.value}});toast('Fejlmeldingspanelet er sendt til Discord');})},'Send panel til Discord')),h('p',{class:'muted'},'Borgerkommandoer: /fejl · /fejlstatus · /fejlsvar · /fejlbillede. Interne noter, planlægning og logs er kun til udviklere og administratorer.'));
   const header=h('div',{class:'card work-header workspace-hero'},h('div',{},h('span',{class:'workspace-eyebrow'},'FIVEM · UDVIKLINGSCENTER'),h('h2',{},'Fra fejlmelding til færdig release'),h('p',{class:'muted'},'Én arbejdsplads til planlægning, dokumentation og borgersager.')),counts);
-  const tools=h('div',{class:'work-tools'},search,priorityFilter,typeFilter,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager'));
+  const tools=h('div',{class:'work-tools'},search,priorityFilter,typeFilter,categoryFilter,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager'));
   draw();
   return [header,dashboardTabs([
     {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:[discord,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},

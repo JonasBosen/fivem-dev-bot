@@ -8,7 +8,9 @@ const definitions = [
   new S().setName('fejl').setDescription('Meld en fejl til udvikleren')
     .addStringOption(o=>o.setName('titel').setDescription('Kort titel').setRequired(true).setMaxLength(200))
     .addStringOption(o=>o.setName('beskrivelse').setDescription('Beskriv fejlen og hvordan den genskabes').setRequired(true).setMaxLength(4000))
-    .addAttachmentOption(o=>o.setName('billede').setDescription('Billede af fejlen (maks. 10 MB)')),
+    .addAttachmentOption(o=>o.setName('billede').setDescription('Billede af fejlen (maks. 6 MB)'))
+    .addStringOption(o=>o.setName('kategori').setDescription('Hvad handler sagen om?').addChoices(...require('./modules/report-categories').categories.map(c=>({name:c.label,value:c.id}))))
+    .addStringOption(o=>o.setName('andet').setDescription('Egen kategori, hvis du vælger Andet').setMaxLength(100)),
   new S().setName('fejlbillede').setDescription('Vedhæft et billede til din eksisterende fejlmelding')
     .addIntegerOption(o=>o.setName('id').setDescription('Sagsnummer').setRequired(true).setMinValue(1))
     .addAttachmentOption(o=>o.setName('billede').setDescription('Billede til sagen (højst 6 MB)').setRequired(true)),

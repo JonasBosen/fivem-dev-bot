@@ -5,11 +5,16 @@ test('report button opens modal with optional file upload beside the text fields
   let payload;
   await developer.onInteraction({customId:'dev:report',isButton:()=>true,showModal:async modal=>{payload=modal.toJSON();}});
   assert.equal(payload.custom_id,'dev:submit');
-  assert.equal(payload.components.length,3);
+  assert.equal(payload.components.length,5);
   const upload=payload.components.find(c=>c.component?.custom_id==='image');
   assert.ok(upload);
   assert.equal(upload.component.type,19);
   assert.equal(upload.component.required,false);
   assert.equal(upload.component.max_values,1);
   assert.deepEqual(payload.components.slice(0,2).map(c=>c.component.custom_id),['title','description']);
+  const category=payload.components.find(c=>c.component?.custom_id==='category').component;
+  assert.equal(category.options.length,25);
+  assert.ok(category.options.some(o=>o.value==='mlo'));
+  assert.ok(category.options.some(o=>o.value==='other'));
+  assert.ok(payload.components.some(c=>c.component?.custom_id==='custom_category'));
 });
