@@ -66,3 +66,11 @@ document.addEventListener('click',event=>{
   const action=(el.getAttribute('aria-label')||el.textContent||'').trim().slice(0,100);if(!action)return;
   api(`/api/guild/${G.id}/audit/interaction`,{method:'POST',body:{module,action}}).catch(()=>{});
 });
+
+async function renderCommandCatalog(){
+ const list=h('div',{class:'rows'}),status=h('p',{class:'muted'},'Henter kommandoer fra Discord…'),search=h('input',{type:'search',placeholder:'Søg efter en kommando…','aria-label':'Søg i Discord-kommandoer'});let commands=[],busy=false;
+ function draw(){const query=search.value.toLocaleLowerCase('da');const matches=commands.filter(c=>(c.name+' '+c.description+' '+JSON.stringify(c.options)).toLocaleLowerCase('da').includes(query));list.replaceChildren(...(matches.length?matches.map(c=>h('div',{class:'row'},h('div',{class:'top'},h('b',{},(c.type===1?'/':'')+c.name),h('span',{class:'badge'},c.scope==='server'?'Serverkommando':'Global kommando')),h('p',{},c.description||'Kommando i genvejsmenuen'),...c.options.map(o=>h('p',{class:'muted'},o.name+(o.required?' · påkrævet':'')+' — '+(o.description||''))),h('small',{class:'muted'},'Discord-ID: '+c.id))):[h('p',{class:'muted'},'Ingen kommandoer passer til din søgning.')]));}
+ async function refresh(){if(busy||document.hidden)return;busy=true;try{const data=await api('/api/guild/'+G.id+'/commands');commands=data.commands;draw();status.textContent=commands.length+' kommandoer · Senest hentet '+new Date(data.checkedAt).toLocaleTimeString('da-DK')+' · Opdateres automatisk hvert 30. sekund.';}catch(e){status.textContent='Kunne ikke opdatere: '+e.message+'. Den senest hentede liste vises stadig.';}finally{busy=false;}}
+ search.addEventListener('input',draw);await refresh();pollTimer=setInterval(refresh,30000);
+ return h('div',{class:'card'},h('h2',{},'Discord-kommandoer'),h('p',{class:'muted'},'Listen hentes fra Discord og viser vores bots globale kommandoer og serverkommandoer. Kommandoer fra andre bots og almindelige tekstkommandoer kan ikke hentes som Discord-kommandoer.'),h('div',{class:'actions'},search,h('button',{class:'btn sec',onclick:refresh},'Hent igen')),status,list);
+}

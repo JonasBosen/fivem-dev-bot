@@ -136,6 +136,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     const replies=Object.fromEntries((await db.prepare("SELECT task_id,MAX(id) AS latest FROM dev_comments WHERE guild_id=? AND author_type='citizen' GROUP BY task_id").all(req.guild.id)).map(r=>[r.task_id,r.latest]));
     return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t,status:t.status==='done'?'closed':t.status,latestCitizenReply:replies[t.id]||0, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})); }));
   app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').page(req.guild.id,req.query.before)));
+  app.get('/api/guild/:gid/developer/panel-config',auth,devAccess,wrap(async req=>(await settings.get(req.guild.id)).developer.reportPanel||require('../modules/report-panel-config').defaults));
+  app.put('/api/guild/:gid/developer/panel-config',auth,devAccess,wrap(async req=>{const reportPanel=require('../modules/report-panel-config').validate(req.body);const cfg=(await settings.get(req.guild.id)).developer;await settings.setModule(req.guild.id,'developer',{...cfg,reportPanel});await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:'reportPanel',settings:reportPanel});const updatedPanels=await require('../modules/report-panel').refreshPanels(req.guild.client,req.guild.id,cfg.reportPanel?.text);return {...reportPanel,updatedPanels};}));
   app.post('/api/guild/:gid/developer/panel',auth,devAccess,wrap(async req=>{await developer.sendPanel(req.guild,req.body.channel);await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'panel_sent',{channel:req.body.channel});}));
   app.delete('/api/guild/:gid/developer/:id',auth,devAccess,wrap(req=>developer.remove(req.guild,Number(req.params.id),req.session.user.id)));
   app.get('/api/guild/:gid/developer/:id',auth,devAccess,wrap(async req=>{
@@ -236,6 +238,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(!await isManager(req.guild,req.session.user.id)&&module!=='developer')throw new Error('Ingen adgang');
     await audit.record(req.guild.id,req.session.user.id,module,'navigation',{action});
   }));
+  app.get('/api/guild/:gid/commands',auth,guildAccess,wrap(req=>require('../modules/command-catalog').load(req.guild)));
   app.get('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.accounts(req.guild.id)));
   app.get('/api/guild/:gid/stream/diagnostics/:platform',auth,guildAccess,wrap(req=>stream.inspect(req.guild,req.params.platform)));
   app.post('/api/guild/:gid/stream/check/:platform',auth,guildAccess,wrap(req=>stream.checkNow(req.guild,req.params.platform)));

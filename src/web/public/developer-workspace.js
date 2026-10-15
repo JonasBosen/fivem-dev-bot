@@ -172,6 +172,7 @@ async function renderDeveloperWorkspace() {
   }
   const log=h('div',{class:'card audit-workspace'},h('span',{class:'workspace-eyebrow'},'HISTORIK & DOKUMENTATION'),h('h2',{},'Udviklerens aktivitetslog'),h('p',{class:'muted'},'Oprettelser, noter, tjeklister, tid, status, billeder og sletninger gemmes i databasen. Sletning af en sag fjerner ikke dens historik. Hent ældre hændelser for at se længere tilbage.'),h('button',{class:'btn sec',onclick:run(()=>loadLogs(true))},'Opdatér log'),logCount,logBody,older);
   const panelChannel=h('select',{},...optionList(G.channels,'# ','Vælg Discord-kanal'));
+  const buttonBuilder=await renderReportButtonBuilder(base,reportCategories);
   const discord=h('div',{class:'card'},h('span',{class:'workspace-eyebrow'},'DISCORD & OPSÆTNING'),h('h2',{},'Fejlmeldingspanel til borgerne'),h('p',{class:'muted'},'Vælg en kanal og send panelet. Borgeren kan indsende titel, beskrivelse og billede. Sagen lander på FiveM-arbejdstavlen.'),panelChannel,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{if(!panelChannel.value)throw new Error('Vælg en kanal');await api(base+'/panel',{method:'POST',body:{channel:panelChannel.value}});toast('Fejlmeldingspanelet er sendt til Discord');})},'Send panel til Discord')),h('p',{class:'muted'},'Borgerkommandoer: /fejl · /fejlstatus · /fejlsvar · /fejlbillede. Interne noter, planlægning og logs er kun til udviklere og administratorer.'));
   const lockButton=h('button',{class:'btn sec',onclick:run(async()=>{if(!canLeave())return;dirty=false;await api('/api/guild/'+G.id+'/developer-access/lock',{method:'POST',body:{}});await route();})},'Lås udviklerpanelet');
   const changePin=h('details',{class:'card'},h('summary',{},'Skift adgangskode (serverejeren)'),h('p',{class:'muted'},'Andre brugere bliver låst ude, når koden ændres.'),pin,h('button',{class:'btn',onclick:run(async()=>{await api('/api/guild/'+G.id+'/developer-access/change',{method:'POST',body:{pin:pin.value}});pin.value='';toast('Adgangskoden er ændret');})},'Gem ny firecifret kode'));
@@ -192,10 +193,21 @@ async function renderDeveloperWorkspace() {
   const previousCleanup=window.developerCleanup;previousCleanup?.();window.developerCleanup=()=>{window.removeEventListener('keydown',escape);window.removeEventListener('beforeunload',unload);};
   draw();
   return [header,dashboardTabs([
-    {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:[discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
+    {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:[buttonBuilder,discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
     {id:'board',icon:'▦',label:'FiveM-arbejdstavle',content:[h('p',{class:'muted'},'Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,newCard,board]},
     {id:'calendar',icon:'◷',label:'Kalender',content:[calendar.element]},
     {id:'list',icon:'☷',label:'Sagsliste',content:[list]},
     {id:'logs',icon:'≡',label:'Aktivitetslog',content:[log],onOpen:()=>{if(!logLoaded)loadLogs(true).catch(e=>toast(e.message,true));}}
   ],G.id+'-developer','board'),drawer];
+}
+
+async function renderReportButtonBuilder(base,categories){
+ const draft=await api(base+'/panel-config');
+ const rows=h('div',{class:'rows'}),preview=h('div',{class:'actions'});
+ const colors={blue:'Blå',green:'Grøn',red:'Rød',gray:'Grå'};
+ function select(label,value,options,change){const el=h('select',{onchange:e=>{change(e.target.value);drawPreview();}},...options.map(([id,name])=>h('option',{value:id},name)));el.value=value;return h('label',{class:'f'},label,el);}
+ function drawPreview(){preview.replaceChildren(...draft.buttons.map(b=>h('button',{type:'button',class:'btn',style:'background:'+({blue:'#5865f2',green:'#248046',red:'#da373c',gray:'#4e5058'}[b.color]),title:'Forhåndsvisning'},(b.emoji?b.emoji+' ':'')+b.label)));}
+ function draw(){rows.replaceChildren(...draft.buttons.map((b,i)=>{const label=field({k:'label',l:'Tekst på knappen'},b),emoji=field({k:'emoji',l:'Emoji (valgfri)'},b);label.addEventListener('input',drawPreview);emoji.addEventListener('input',drawPreview);return h('div',{class:'row'},h('div',{class:'grid'},label,emoji,select('Farve',b.color,Object.entries(colors),v=>b.color=v),select('Knappen åbner',b.category,[['choose','Borgeren vælger selv kategori'],...categories.map(c=>[c.id,c.label])],v=>b.category=v)),h('div',{class:'actions'},h('button',{type:'button',class:'btn sec sm',disabled:i===0,onclick:()=>{draft.buttons.splice(i-1,0,draft.buttons.splice(i,1)[0]);draw();}},'Flyt op'),h('button',{type:'button',class:'btn bad sm',onclick:()=>{draft.buttons.splice(i,1);draw();}},'Fjern knap')));}));drawPreview();}
+ draw();
+ return h('div',{class:'card'},h('h2',{},'Byg dine egne Discord-knapper'),h('p',{class:'muted'},'Vælg tekst, emoji, farve og kategori for hver knap. Fjern alle knapper for et panel uden knapper. Discord tillader blå, grøn, rød og grå knapper; orange understøttes ikke.'),field({k:'text',l:'Besked i Discord-panelet',t:'textarea'},draft),rows,h('button',{type:'button',class:'btn sec',onclick:()=>{if(draft.buttons.length>=25){toast('Der må højst være 25 knapper',true);return;}draft.buttons.push({label:'Ny knap',emoji:'',color:'blue',category:'choose'});draw();}},'Tilføj knap'),h('h3',{},'Forhåndsvisning'),preview,h('button',{type:'button',class:'btn',onclick:run(async()=>{const result=await api(base+'/panel-config',{method:'PUT',body:draft});toast('Knapper gemt · '+result.updatedPanels+' eksisterende Discord-paneler opdateret.');})},'Gem knapper og opdater Discord'));
 }

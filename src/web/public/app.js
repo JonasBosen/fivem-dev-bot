@@ -102,7 +102,7 @@ const SCHEMA = {
   developer: [{k:'enabled',l:'Aktivér fejlmeldinger',t:'toggle'},{k:'roles',l:'Udviklerroller',t:'roles'},{k:'reporterRoles',l:'Roller der må sende fejlmeldinger og svar (tom = alle medlemmer)',t:'roles'}],
   general: [{ k: 'prefix', l: 'Prefix til custom commands', ph: '!' },{k:'adminRoles',l:'Roller med adgang til hele dashboardet',t:'roles'}],
   tickets: [
-    { k: 'enabled', t: 'toggle', l: 'Tickets slået til' },
+    { k: 'enabled', t: 'toggle', l: 'Supportsager slået til' },
     { k: 'maxOpenPerUser', t: 'number', l: 'Maks åbne tickets pr. bruger', min: 1 },
     { k: 'categoryId', t: 'category', l: 'Kategori nye tickets oprettes i' },
     { k: 'logChannel', t: 'channel', l: 'Log-kanal (transcripts sendes hertil)' },
@@ -162,7 +162,7 @@ const SCHEMA = {
     { k: 'panelText', t: 'textarea', l: 'Panel: tekst' },
   ],
   levels: [
-    { k: 'enabled', t: 'toggle', l: 'Levels slået til' },
+    { k: 'enabled', t: 'toggle', l: 'Niveauer slået til' },
     { k: 'announceChannel', t: 'channel', l: 'Level-up kanal (tom = samme kanal)' },
     { k: 'xpMin', t: 'number', l: 'XP min pr. besked', min: 0 },
     { k: 'xpMax', t: 'number', l: 'XP maks pr. besked', min: 0 },
@@ -209,9 +209,9 @@ function panelCard(type, text) {
 
 // ---------- Sider ----------
 const PAGES = [
-  ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Tickets'], ['applications', '📝', 'Ansøgninger'],
+  ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Levels'], ['giveaways', '🎉', 'Giveaways'], ['stream', '🔴', 'Stream-alerts'], ['custom', '💬', 'Custom commands'], ['appearance','🎨','Indstillinger for siden'],
+  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],
 ];
 
 const pages = {
@@ -222,7 +222,7 @@ const pages = {
     const s = G.stats;
     const stat = (n, l) => h('div', { class: 'stat' }, h('b', {}, n), h('span', {}, l));
     return [
-      h('div', { class: 'stats' }, stat(G.members, 'Medlemmer'), stat(s.openTickets, 'Åbne tickets'), stat(s.totalTickets, 'Tickets i alt'),
+      h('div', { class: 'stats' }, stat(G.members, 'Medlemmer'), stat(s.openTickets, 'Åbne supportsager'), stat(s.totalTickets, 'Supportsager i alt'),
         stat(s.pendingApps, 'Ansøgninger der venter'), stat(s.activeGiveaways, 'Aktive giveaways'), stat(s.warnings, 'Advarsler')),
       h('div', { class: 'card' }, h('h2', {}, 'Kom godt i gang'),
         h('ol', { class: 'muted' },
@@ -253,7 +253,7 @@ const pages = {
     const tab = (k, l) => h('button', { class: 'btn sec sm', onclick: () => { filter = k; draw(); } }, l);
     draw();
     return [
-      h('div', { class: 'card' }, h('h2', {}, 'Tickets'), h('div', { class: 'tabs' }, tab('open', 'Åbne'), tab('closed', 'Lukkede'), tab('all', 'Alle')),
+      h('div', { class: 'card' }, h('h2', {}, 'Supportsager'), h('div', { class: 'tabs' }, tab('open', 'Åbne'), tab('closed', 'Lukkede'), tab('all', 'Alle')),
         h('div', { class: 'tablewrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ['ID', 'Kategori', 'Bruger', 'Status', 'Claimet af', 'Oprettet', ''].map((x) => h('th', {}, x)))), body))),
       panelCard('tickets', 'Sender en besked med knapper hvor medlemmer kan åbne en ticket.'),
       settingsCard('tickets', 'Indstillinger'),
@@ -261,6 +261,7 @@ const pages = {
   },
 
   async applications() {
+    const stat=(n,l)=>h('div',{class:'stat'},h('b',{},n),h('span',{},l));
     const list = await api(`/api/guild/${G.id}/applications`);
     const forms = Object.fromEntries(G.settings.applications.forms.map((f) => [f.id, f]));
     const cards = list.slice(0, 50).map((a) => h('div', { class: 'row' },
@@ -271,11 +272,17 @@ const pages = {
       a.status === 'pending' && h('div', { class: 'actions' },
         h('button', { class: 'btn bad sm', onclick: run(async () => { await api(`/api/guild/${G.id}/applications/${a.id}/deny`, { method: 'POST' }); toast('Afvist'); route(); }) }, 'Afvis'),
         h('button', { class: 'btn ok sm', onclick: run(async () => { await api(`/api/guild/${G.id}/applications/${a.id}/accept`, { method: 'POST' }); toast('Accepteret'); route(); }) }, 'Accepter'))));
-    return [
-      h('div', { class: 'card' }, h('h2', {}, 'Ansøgninger'), h('div', { class: 'rows' }, cards.length ? cards : h('p', { class: 'muted' }, 'Ingen ansøgninger endnu.'))),
-      panelCard('applications', 'Sender en besked med en knap pr. formular.'),
-      settingsCard('applications', 'Indstillinger'),
-    ];
+    const search=h('input',{type:'search',placeholder:'Søg i indsendelser…','aria-label':'Søg i indsendelser'});
+    const filter=h('select',{'aria-label':'Filtrer efter status'},...Object.entries({all:'Alle indsendelser',pending:'Afventer behandling',accepted:'Accepterede',denied:'Afviste'}).map(([value,label])=>h('option',{value},label)));
+    const results=h('div',{class:'rows'});
+    function draw(){const matches=list.slice(0,50).map((a,i)=>({a,card:cards[i]})).filter(({a})=>(filter.value==='all'||a.status===filter.value)&&JSON.stringify([a.id,forms[a.form_id]?.name,a.user,a.user_id,a.answers]).toLocaleLowerCase('da').includes(search.value.toLocaleLowerCase('da')));results.replaceChildren(...(matches.length?matches.map(x=>x.card):[h('p',{class:'muted'},'Ingen indsendelser passer til din søgning.')]));}
+    search.addEventListener('input',draw);filter.addEventListener('change',draw);draw();
+    return dashboardTabs([
+      {id:'overview',label:'Oversigt',content:[h('div',{class:'card'},h('h2',{},'Ansøgninger til Dream Network'),h('p',{class:'muted'},'Opret formularer, send et panel til Discord, og behandl medlemmernes indsendelser her.'),h('div',{class:'stats'},stat(Object.keys(forms).length,'Formularer'),stat(list.filter(a=>a.status==='pending').length,'Afventer behandling'),stat(list.filter(a=>a.status==='accepted').length,'Accepterede')),h('h3',{},'Jeres formularer'),...Object.values(forms).map(f=>h('div',{class:'row'},h('b',{},f.name),h('p',{class:'muted'},(f.questions||[]).length+' spørgsmål · '+(f.acceptRole?'Tildeler en rolle ved accept':'Ingen automatisk rolle')))),!Object.keys(forms).length&&h('p',{},'Opret jeres første formular under Formularer og indstillinger.'))]},
+      {id:'forms',label:'Formularer og indstillinger',content:[settingsCard('applications','Formularer og indstillinger')]},
+      {id:'panels',label:'Discord-paneler',content:[panelCard('applications','Send en besked med knapper, som medlemmer kan bruge til at åbne jeres formularer.')]},
+      {id:'submissions',label:'Indsendelser',content:[h('div',{class:'card'},h('h2',{},'Indsendelser'),h('div',{class:'actions'},search,filter),results)]}
+    ],G.id+'-applications','overview');
   },
 
   async music() {
@@ -353,7 +360,7 @@ const pages = {
         h('div', { class: 'grid' }, field({ k: 'prize', l: 'Præmie' }, draft), field({ k: 'duration', l: 'Varighed (30m, 2h, 1d, 1w)' }, draft),
           field({ k: 'winners', t: 'number', l: 'Antal vindere', min: 1 }, draft), field({ k: 'channel', t: 'channel', l: 'Kanal' }, draft)),
         h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: run(async () => { await api(`/api/guild/${G.id}/giveaways`, { method: 'POST', body: draft }); toast('Giveaway startet 🎉'); route(); }) }, 'Start giveaway'))),
-      h('div', { class: 'card' }, h('h2', {}, 'Giveaways'), h('div', { class: 'tablewrap' }, h('table', { class: 'table' },
+      h('div', { class: 'card' }, h('h2', {}, 'Præmielodtrækninger'), h('div', { class: 'tablewrap' }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {}, ['ID', 'Præmie', 'Kanal', 'Deltagere', 'Slutter', 'Status', ''].map((x) => h('th', {}, x)))),
         h('tbody', {}, list.length ? list.map((g) => h('tr', {}, h('td', {}, `#${g.id}`), h('td', {}, g.prize), h('td', {}, `#${chName(g.channel_id) || '?'}`), h('td', {}, g.entries), h('td', {}, date(g.ends_at)),
           h('td', {}, h('span', { class: `badge ${g.ended ? 'closed' : 'open'}` }, g.ended ? 'Slut' : 'Aktiv')),
@@ -368,7 +375,7 @@ const pages = {
       h('div', { class: 'card muted' }, 'Twitch kræver TWITCH_CLIENT_ID og TWITCH_CLIENT_SECRET i .env. YouTube virker uden nøgle – find kanal-ID’et (UC…) under "Del kanal → Kopiér kanal-ID". Der tjekkes hvert 2. minut.')];
   },
 
-  async custom() { return [settingsCard('custom', 'Custom commands')]; },
+  async custom() { return dashboardTabs([{id:'discord',label:'Discord-kommandoer',content:[await renderCommandCatalog()]},{id:'custom',label:'Egne tekstkommandoer',content:[settingsCard('custom','Egne tekstkommandoer')]}],G.id+'-commands','discord'); },
 };
 
 // ---------- Visning ----------
@@ -404,7 +411,7 @@ async function route() {
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(['developer','stream','appearance','logs'].includes(page)?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','stream','appearance','logs','applications','custom'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
@@ -427,7 +434,7 @@ async function route() {
   if (r.status === 401) {
     $app.replaceChildren(h('div', { class: 'center' }, h('div', {},
       h('h1', { style: 'font-size:30px' }, 'Alle bots samlet'),
-      h('p', { class: 'muted' }, 'Tickets, musik, moderation, levels, ansøgninger, giveaways og stream-alerts – ét sted.'),
+      h('p', { class: 'muted' }, 'Supportsager, musik, moderation, niveauer, ansøgninger, præmielodtrækninger og streambeskeder – ét sted.'),
       h('a', { class: 'btn', href: '/login' }, 'Log ind med Discord'))));
     return;
   }
