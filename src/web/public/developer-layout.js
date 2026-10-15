@@ -1,0 +1,20 @@
+function developerLayout(guild,user){
+ const key='developer-layout-v1:'+guild+':'+user;let state;try{state=JSON.parse(localStorage.getItem(key));}catch{}state=state&&typeof state==='object'?state:{locked:false,windows:{},lanes:{}};state.windows||={};state.lanes||={};
+ const entries=new Map(),observers=new Set(),laneObservers=new Set();let z=150,writing;
+ const flush=()=>{clearTimeout(writing);try{localStorage.setItem(key,JSON.stringify(state));}catch{}};window.addEventListener('pagehide',flush);
+ const persist=()=>{clearTimeout(writing);writing=setTimeout(()=>{try{localStorage.setItem(key,JSON.stringify(state));}catch{}},120);};
+ function clamp(el){const r=el.getBoundingClientRect();el.style.left=Math.max(8,Math.min(parseFloat(el.style.left)||8,innerWidth-Math.min(r.width,innerWidth-16)-8))+'px';el.style.top=Math.max(8,Math.min(parseFloat(el.style.top)||8,innerHeight-70))+'px';}
+ function remember(el,id,type){const r=el.getBoundingClientRect();if(r.width<1)return;state[type][id]=type==='windows'?{x:r.x,y:r.y,width:r.width,height:r.height}:{width:r.width,height:r.height};persist();}
+ function observe(el,id,type){const observer=new ResizeObserver(()=>{if(!el.isConnected)return;if(type==='windows')clamp(el);remember(el,id,type);});observer.observe(el);observers.add(observer);return ()=>{observer.disconnect();observers.delete(observer);};}
+ function windowBox(el,id,handle){const saved=state.windows[id],offset=entries.size*28;el.style.width=(Number(saved?.width)||Math.min(800,innerWidth-32))+'px';el.style.height=(Number(saved?.height)||Math.min(760,innerHeight-40))+'px';el.style.left=(Number(saved?.x)||Math.max(8,innerWidth-840-offset))+'px';el.style.top=(Number(saved?.y)||24+offset)+'px';el.classList.toggle('layout-locked',!!state.locked);
+ const focus=()=>{el.style.zIndex=++z;};el.addEventListener('pointerdown',focus);el.addEventListener('focusin',focus);focus();let drag;
+ handle.addEventListener('pointerdown',e=>{if(state.locked||e.button!==0||e.target.closest('button'))return;const r=el.getBoundingClientRect();drag={x:e.clientX,y:e.clientY,left:r.x,top:r.y};handle.setPointerCapture(e.pointerId);e.preventDefault();});
+ handle.addEventListener('pointermove',e=>{if(!drag||state.locked)return;el.style.left=drag.left+e.clientX-drag.x+'px';el.style.top=drag.top+e.clientY-drag.y+'px';clamp(el);});
+ const end=()=>{if(drag){drag=null;remember(el,id,'windows');}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
+ handle.addEventListener('keydown',e=>{if(state.locked||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();el.style.left=(parseFloat(el.style.left)+(e.key==='ArrowRight'?20:e.key==='ArrowLeft'?-20:0))+'px';el.style.top=(parseFloat(el.style.top)+(e.key==='ArrowDown'?20:e.key==='ArrowUp'?-20:0))+'px';clamp(el);remember(el,id,'windows');});
+ const disconnect=observe(el,id,'windows');entries.set(el,{id,disconnect});requestAnimationFrame(()=>clamp(el));return ()=>{remember(el,id,'windows');flush();disconnect();entries.delete(el);};}
+ function lane(el,id){const saved=state.lanes[id];if(saved){el.style.width=saved.width+'px';el.style.height=saved.height+'px';}el.classList.toggle('layout-locked',!!state.locked);laneObservers.add(observe(el,id,'lanes'));}
+ function reset(){state.windows={};state.lanes={};for(const [el]of entries){el.style.left='24px';el.style.top='24px';el.style.width=Math.min(800,innerWidth-32)+'px';el.style.height=Math.min(760,innerHeight-40)+'px';}persist();}
+ const onResize=()=>{for(const [el]of entries)clamp(el);};window.addEventListener('resize',onResize);
+ return {get locked(){return !!state.locked;},windowBox,lane,reset,toggle(){state.locked=!state.locked;for(const [el]of entries)el.classList.toggle('layout-locked',state.locked);persist();return state.locked;},clearLanes(){for(const disconnect of laneObservers)disconnect();laneObservers.clear();},destroy(){clearTimeout(writing);try{localStorage.setItem(key,JSON.stringify(state));}catch{}for(const o of observers)o.disconnect();window.removeEventListener('resize',onResize);window.removeEventListener('pagehide',flush);}};
+}

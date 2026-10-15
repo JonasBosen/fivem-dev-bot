@@ -194,21 +194,26 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{appearance:(await settings.get(g.id)).appearance},stats:{}};
     }
     const channels = [...g.channels.cache.values()].sort((a, b) => a.rawPosition - b.rawPosition);
+    const [guildSettings,openTickets,totalTickets,pendingApps,activeGiveaways,warningCount]=await Promise.all([
+      settings.get(g.id),db.prepare("SELECT COUNT(*) n FROM tickets WHERE guild_id=? AND status='open'").get(g.id),
+      db.prepare('SELECT COUNT(*) n FROM tickets WHERE guild_id=?').get(g.id),db.prepare("SELECT COUNT(*) n FROM applications WHERE guild_id=? AND status='pending'").get(g.id),
+      db.prepare('SELECT COUNT(*) n FROM giveaways WHERE guild_id=? AND ended=0').get(g.id),db.prepare('SELECT COUNT(*) n FROM warnings WHERE guild_id=?').get(g.id)
+    ]);
     return {
       id: g.id, name: g.name, icon: g.iconURL(), members: g.memberCount,
       developerOnly: false,
-      settings: (await settings.get(g.id)),
+      settings: guildSettings,
       defaults: DEFAULTS,
       channels: channels.filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement).map((c) => ({ id: c.id, name: c.name })),
       voiceChannels: channels.filter((c) => c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice).map((c) => ({ id: c.id, name: c.name })),
       categories: channels.filter((c) => c.type === ChannelType.GuildCategory).map((c) => ({ id: c.id, name: c.name })),
       roles: [...g.roles.cache.values()].filter((r) => !r.managed).sort((a, b) => b.position - a.position).map((r) => ({ id: r.id, name: r.id === g.id ? '@everyone' : r.name, color: r.hexColor })),
       stats: {
-        openTickets: (await db.prepare("SELECT COUNT(*) n FROM tickets WHERE guild_id=? AND status='open'").get(g.id)).n,
-        totalTickets: (await db.prepare('SELECT COUNT(*) n FROM tickets WHERE guild_id=?').get(g.id)).n,
-        pendingApps: (await db.prepare("SELECT COUNT(*) n FROM applications WHERE guild_id=? AND status='pending'").get(g.id)).n,
-        activeGiveaways: (await db.prepare('SELECT COUNT(*) n FROM giveaways WHERE guild_id=? AND ended=0').get(g.id)).n,
-        warnings: (await db.prepare('SELECT COUNT(*) n FROM warnings WHERE guild_id=?').get(g.id)).n,
+        openTickets: openTickets.n,
+        totalTickets: totalTickets.n,
+        pendingApps: pendingApps.n,
+        activeGiveaways: activeGiveaways.n,
+        warnings: warningCount.n,
       },
     };
   }));
@@ -217,8 +222,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(!['/settings/developer','/panel/developer'].some(s=>req.path.endsWith(s)))return next();
     if(!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});next();
   };
-  app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
-    if(req.params.module==='restart')return require('../modules/restarts').configure(req.guild,req.body);
+  app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
+    if(req.params.module==='restart')return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
     if(req.params.module==='appearance')req.body=require('../modules/appearance').validate(req.body);
     if(req.params.module==='stream')req.body=stream.validateConfig(req.body);
     if (!Object.hasOwn(DEFAULTS, req.params.module)) throw new Error('Ukendt modul');
