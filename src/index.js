@@ -29,7 +29,6 @@ const commandRoutes = {
   fødselsdag:require('./modules/community-studios'),
   stream,
   fejlbillede: developer, fejlsvar: developer, fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
-  rank: community, leaderboard: community,
   ticket: tickets, application: applications, giveaway: giveaways,
   play: musicFleet, next: musicFleet, skip: musicFleet, pause: musicFleet, resume: musicFleet, stop: musicFleet, shuffle: musicFleet, queue: musicFleet, nowplaying: musicFleet, volume: musicFleet, loop: musicFleet,
 };
@@ -41,7 +40,7 @@ client.once(Events.ClientReady, async (c) => {
   giveaways.startTimer(c);
   stream.startPolling(c);
   require('./modules/community-studios').start(c);
-  require('./modules/report-panel').refreshPanels(c).catch(e=>console.warn('[fejlpanel]',e.message));
+  require('./modules/report-panel').refreshPanels(c).then(()=>require('./modules/developer-wishes').ensureBesideDeveloperPanel(c)).catch(e=>console.warn('[fejlpanel]',e.message));
   music.init(c).then(()=>musicFleet.init(c)).catch((e) => console.error('[musik]', e.message));
 });
 
@@ -78,12 +77,12 @@ client.on(Events.MessageCreate, async (m) => {
     if (await moderation.automod(m)) return;
     if (await musicFleet.onMessage(m)) return;
     if (await community.customCommand(m)) return;
-    await community.giveXp(m);
+
   } catch (e) { console.warn('[besked]', e.message); }
 });
 
-client.on(Events.GuildMemberAdd, (m) => community.onJoin(m).catch((e) => console.warn('[join]', e.message)));
-client.on(Events.GuildMemberRemove, (m) => community.onLeave(m).catch(() => {}));
+client.on(Events.GuildMemberAdd,m=>{community.onJoin(m).catch(e=>console.warn('[join]',e.message));require('./modules/members-panel').record(m,'joined').catch(e=>console.warn('[medlem]',e.message));});
+client.on(Events.GuildMemberRemove,m=>{community.onLeave(m).catch(()=>{});require('./modules/members-panel').record(m,'left').catch(e=>console.warn('[medlem]',e.message));});
 
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 

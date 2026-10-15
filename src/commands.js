@@ -41,8 +41,6 @@ const definitions = [
   new S().setName('clear').setDescription('Slet beskeder').setDefaultMemberPermissions(P.ManageMessages)
     .addIntegerOption((o) => o.setName('antal').setDescription('1-100').setRequired(true).setMinValue(1).setMaxValue(100)),
   // Levels
-  new S().setName('rank').setDescription('Se dit level').addUserOption((o) => user(o, false)),
-  new S().setName('leaderboard').setDescription('Top 10 på serveren'),
   // Tickets
   new S().setName('ticket').setDescription('Ticket-kommandoer')
     .addSubcommand((s) => s.setName('panel').setDescription('Send ticket-panelet i denne kanal'))

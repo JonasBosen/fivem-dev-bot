@@ -6,7 +6,7 @@ const { SQLITE_SCHEMA, POSTGRES_SCHEMA } = require('./schema');
 function postgresSql(sql) {
   let position = 0;
   return sql.replace(/\?/g, () => `$${++position}`)
-    .replace(/\b(FROM|INTO|UPDATE|JOIN)\s+(panel_users|panel_invites|dev_registry|dev_presence|panel_media|settings|tickets|applications|levels|warnings|giveaways|stream_state|dev_gate|dev_gate_attempts|site_audit|stream_accounts|dev_tasks|dev_history|dev_images|dev_comments|dev_files|dev_audit|dev_deleted|dev_planning)\b/gi, '$1 allbot.$2')
+    .replace(/\b(FROM|INTO|UPDATE|JOIN)\s+(wheel_spins|member_events|panel_users|panel_invites|dev_registry|dev_presence|panel_media|settings|tickets|applications|levels|warnings|giveaways|stream_state|dev_gate|dev_gate_attempts|site_audit|stream_accounts|dev_tasks|dev_history|dev_images|dev_comments|dev_files|dev_audit|dev_deleted|dev_planning)\b/gi, '$1 allbot.$2')
     .replace(/SET xp = xp \+/g, 'SET xp = levels.xp +');
 }
 function createPostgresAdapter(connection) {

@@ -1,0 +1,18 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+process.env.DB_FILE=':memory:';process.env.MAIN_GUILD_ID='g';
+const {initDb,db,settings}=require('../src/db'),wishes=require('../src/modules/developer-wishes'),developer=require('../src/modules/developer');
+test('a separate wish panel is posted beside the existing developer panel once and its form creates only request cases',async()=>{
+ await initDb();try{
+ await settings.setModule('g','developer',{enabled:true,reporterRoles:['citizen']});
+ const old={id:'report-panel',author:{id:'bot'},components:[{components:[{customId:'dev:custom:0'}]}]},messages=new Map([[old.id,old]]);let sends=0,edits=0,modal,response;
+ const channel={id:'channel',isTextBased:()=>true,messages:{fetch:async arg=>{if(typeof arg==='object')return messages;if(messages.has(arg))return messages.get(arg);throw Object.assign(new Error('missing'),{code:10008});}},send:async payload=>{sends++;const msg={id:'wish-panel',author:{id:'bot'},components:payload.components.map(r=>({components:r.components.map(b=>({customId:b.data.custom_id}))})),edit:async next=>{edits++;assert.equal(next.components[0].toJSON().components[0].label,'Opret ønsker til serveren');return msg;}};messages.set(msg.id,msg);return msg;}};
+ const guild={id:'g',channels:{fetch:async id=>{assert.equal(id,'channel');return channel;}},members:{fetch:async()=>({permissions:{has:()=>false},roles:{cache:{has:id=>id==='citizen'}}})}},client={user:{id:'bot'},guilds:{cache:new Map([['g',guild]])}};guild.client=client;
+ await require('../src/modules/developer-audit').record('g',0,'owner','panel_sent',{channel:'channel'});
+ await wishes.ensureBesideDeveloperPanel(client);await wishes.ensureBesideDeveloperPanel(client);assert.equal(sends,1);assert.equal(old.components[0].components[0].customId,'dev:custom:0');
+ await wishes.sendPanel(guild,'channel');assert.equal(sends,1);assert.equal(edits,1);
+ const buttons=wishes.panel().components.flatMap(r=>r.toJSON().components);assert.equal(buttons.length,1);assert.equal(buttons[0].label,'Opret ønsker til serveren');assert.equal(buttons[0].custom_id,'dev:wish:0');
+ await wishes.onInteraction({guild,user:{id:'citizen'},customId:'dev:wish:0',reply:async p=>response=p});assert.equal(response.components[0].toJSON().components[0].custom_id,'dev:wishcategory');
+ await wishes.onInteraction({guild,user:{id:'citizen'},customId:'dev:wishcategory',values:['vehicle'],showModal:async m=>modal=m.toJSON()});assert.equal(modal.custom_id,'dev:submit:vehicle:low:request');
+ const wish=await developer.create(guild,'citizen',{title:'Ny bil',description:'Et ønske',reportType:'request'}),bug=await developer.create(guild,'citizen',{title:'Bilfejl',description:'En fejl'});assert.equal(wish.planning.reportType,'request');assert.equal(bug.planning.reportType,'bug');
+ }finally{await db.close();}
+});

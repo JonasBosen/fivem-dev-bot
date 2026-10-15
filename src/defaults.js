@@ -39,7 +39,7 @@ const DEFAULTS = {
     panelText: 'Tryk på knappen herunder for at få adgang til serveren.',
   },
   levels: {
-    enabled: true,
+    enabled: false,
     xpMin: 15,
     xpMax: 25,
     cooldownSeconds: 60,

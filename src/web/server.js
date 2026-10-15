@@ -151,8 +151,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/guild/:gid/developer/presence',auth,devAccess,wrap(req=>require('../modules/developer-presence').heartbeat(req.guild.id,req.session.user.id,req.session.user.username,Date.now(),req.body.active!==false)));
   app.get('/api/guild/:gid/developer/people',auth,devAccess,wrap(async req=>{const members=await req.guild.members.fetch(),cfg=await settings.get(req.guild.id);return [...members.values()].filter(m=>!m.user.bot&&(cfg.developer.roles.some(id=>m.roles.cache.has(id)))).map(m=>({id:m.id,name:m.user.globalName||m.user.username}));}));
   app.get('/api/guild/:gid/developer/wish-panel-config',auth,devAccess,wrap(async req=>(await settings.get(req.guild.id)).developer.wishPanel||require('../modules/developer-wishes').defaults));
-  app.put('/api/guild/:gid/developer/wish-panel-config',auth,devAccess,wrap(async req=>{const wishPanel=require('../modules/report-panel-config').validate(req.body),cfg=(await settings.get(req.guild.id)).developer;await settings.setModule(req.guild.id,'developer',{...cfg,wishPanel});await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:'wishPanel',settings:wishPanel});return wishPanel;}));
-  app.post('/api/guild/:gid/developer/wishes/panel',auth,devAccess,wrap(async req=>{const cfg=(await settings.get(req.guild.id)).developer,ch=await req.guild.channels.fetch(req.body.channel);if(!ch?.isTextBased())throw new Error('Vælg en tekstkanal');await ch.send(require('../modules/developer-wishes').panel(cfg.wishPanel));return {ok:true};}));
+  app.put('/api/guild/:gid/developer/wish-panel-config',auth,devAccess,wrap(async req=>{const wishPanel=require('../modules/report-panel-config').validate(req.body),cfg=(await settings.get(req.guild.id)).developer;await settings.setModule(req.guild.id,'developer',{...cfg,wishPanel});await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:'wishPanel',settings:wishPanel});if(cfg.wishPanelDelivery){await require('../modules/developer-wishes').sendPanel(req.guild,cfg.wishPanelDelivery.channel);return {...wishPanel,updatedPanels:1};}return {...wishPanel,updatedPanels:0};}));
+  app.post('/api/guild/:gid/developer/wishes/panel',auth,devAccess,wrap(req=>require('../modules/developer-wishes').sendPanel(req.guild,req.body.channel)));
   app.get('/api/guild/:gid/developer/registry',auth,devAccess,wrap(req=>require('../modules/developer-registry').list(req.guild.id)));
   app.post('/api/guild/:gid/developer/registry',auth,devAccess,wrap(req=>require('../modules/developer-registry').save(req.guild.id,req.session.user.id,req.body)));
   app.put('/api/guild/:gid/developer/registry/:rid',auth,devAccess,wrap(req=>require('../modules/developer-registry').save(req.guild.id,req.session.user.id,req.body,req.params.rid)));
@@ -233,7 +233,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     return devAccess(req,res,next);
   };
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
-    if(req.params.module==='restart')return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
+    if(['restart','levels'].includes(req.params.module))return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
     if(['birthdays','slideshow'].includes(req.params.module))return require('../modules/community-studios').configure(req.guild,req.params.module,req.body);
     if(req.params.module==='appearance'){const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}
     if(req.params.module==='welcome')req.body=require('../modules/panel-media').validate(req.body);
@@ -303,6 +303,14 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     await applications.review(req.guild, Number(req.params.aid), req.params.decision === 'accept', req.session.user.id);
   }));
 
+  app.get('/api/guild/:gid/members/events',auth,guildAccess,wrap(req=>require('../modules/members-panel').events(req.guild.id,req.query.before)));
+  app.get('/api/guild/:gid/members',auth,guildAccess,wrap(req=>require('../modules/members-panel').list(req.guild,req.session.user.id,req.query.search,req.query.page)));
+  app.put('/api/guild/:gid/members/:uid/roles/:rid',auth,guildAccess,wrap(req=>require('../modules/members-panel').changeRole(req.guild,req.session.user.id,req.params.uid,req.params.rid,true)));
+  app.delete('/api/guild/:gid/members/:uid/roles/:rid',auth,guildAccess,wrap(req=>require('../modules/members-panel').changeRole(req.guild,req.session.user.id,req.params.uid,req.params.rid,false)));
+  app.get('/api/guild/:gid/giveaway-wheel',auth,guildAccess,wrap(async req=>{const wheel=require('../modules/prize-wheel');const [config,history]=await Promise.all([wheel.config(req.guild.id),wheel.history(req.guild.id)]);return {config,history};}));
+  app.put('/api/guild/:gid/giveaway-wheel',auth,guildAccess,wrap(req=>require('../modules/prize-wheel').configure(req.guild,req.body)));
+  app.post('/api/guild/:gid/giveaway-wheel/spin',auth,guildAccess,wrap(req=>require('../modules/prize-wheel').spin(req.guild,req.session.user.id,req.body.requestId)));
+  app.post('/api/guild/:gid/giveaway-wheel/:id/announce',auth,guildAccess,wrap(req=>require('../modules/prize-wheel').retry(req.guild,req.params.id)));
   // Giveaways
   app.get('/api/guild/:gid/giveaways', auth, guildAccess, wrap(async (req) =>
     (await db.prepare('SELECT * FROM giveaways WHERE guild_id=? ORDER BY id DESC LIMIT 100').all(req.guild.id))

@@ -148,8 +148,9 @@ async function submit(i, title, description, attachment, categoryId='bug', custo
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
   await i.deferReply({ flags: MessageFlags.Ephemeral });
   if(!await canReport(i.guild,i.user.id)) return i.editReply('Du skal have borgerrollen for at indsende en fejlmelding.');
-  const recent = await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>?').get(i.guildId, i.user.id, Date.now() - 60000);
-  if (recent) return i.editReply('Vent et minut mellem fejlmeldinger.');
+  const recent = await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>?').all(i.guildId, i.user.id, Date.now() - 60000);
+  const recentTypes=await Promise.all(recent.map(t=>require('./developer-planning').get(i.guildId,t.id)));
+  if (recentTypes.some(p=>p.reportType===reportType)) return i.editReply('Vent et minut mellem fejlmeldinger.');
   const category=require('./report-categories').normalize(categoryId,customCategory);
   const task = await create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
   // A normal DM remains editable after Discord interaction tokens expire.

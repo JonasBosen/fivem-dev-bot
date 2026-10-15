@@ -215,7 +215,7 @@ function panelCard(type, text) {
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Niveauer'], ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
+  ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
@@ -238,6 +238,7 @@ const pages = {
           h('li', {}, 'Musik: brug /play i Discord eller styr afspilleren her fra panelet.'),
           h('li', {}, 'Stream-alerts: tilføj Twitch-navne og YouTube-kanaler.'))),
       settingsCard('general', 'Generelt'),
+      renderMembersPanel(),
     ];
   },
 
@@ -372,7 +373,7 @@ const pages = {
           h('td', {}, h('span', { class: `badge ${g.ended ? 'closed' : 'open'}` }, g.ended ? 'Slut' : 'Aktiv')),
           h('td', {}, h('button', { class: 'btn sec sm', onclick: run(async () => { await api(`/api/guild/${G.id}/giveaways/${g.id}/${g.ended ? 'reroll' : 'end'}`, { method: 'POST' }); toast('Færdig'); route(); }) }, g.ended ? 'Reroll' : 'Afslut nu'))))
           : h('tr', {}, h('td', { colspan: 7, class: 'muted' }, 'Ingen giveaways endnu.')))))),
-      settingsCard('giveaways', 'Indstillinger')];
+      settingsCard('giveaways', 'Indstillinger'),await renderPrizeWheel()];
   },
 
   async stream() { return renderStreamWorkspace(); },
@@ -395,7 +396,7 @@ async function route() {
   if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&page==='restart'){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['restart','levels'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){sessionStorage.setItem('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
@@ -436,7 +437,7 @@ async function route() {
   if (r.status === 401) {
     $app.replaceChildren(h('div', { class: 'center' }, h('div', {},
       h('h1', { style: 'font-size:30px' }, 'Alle bots samlet'),
-      h('p', { class: 'muted' }, 'Supportsager, musik, moderation, niveauer, ansøgninger, præmielodtrækninger og streambeskeder – ét sted.'),
+      h('p', { class: 'muted' }, 'Supportsager, musik, moderation, ansøgninger, præmielodtrækninger og streambeskeder – ét sted.'),
       h('a', { class: 'btn', href: '/login' }, 'Log ind med Discord'))));
     return;
   }
