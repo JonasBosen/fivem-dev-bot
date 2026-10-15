@@ -1,11 +1,6 @@
 async function renderDeveloperWorkspace() {
   const base=`/api/guild/${G.id}/developer`;
-  const access=await api('/api/guild/'+G.id+'/developer-access');
-  const pin=h('input',{type:'password',inputmode:'numeric',pattern:'[0-9]{4}',maxlength:4,autocomplete:'off',placeholder:'••••','aria-label':'Firecifret kode'});
-  if(!access.unlocked){
-    const form=h('form',{class:'card developer-lock',onsubmit:run(async e=>{e.preventDefault();if(!/^\d{4}$/.test(pin.value))throw new Error('Skriv fire cifre');await api('/api/guild/'+G.id+'/developer-access/'+(access.configured?'unlock':'setup'),{method:'POST',body:{pin:pin.value}});pin.value='';await route();})},h('span',{class:'workspace-eyebrow'},'BESKYTTET ARBEJDSOMRÅDE'),h('h2',{},'Udviklerpanelet er låst'),h('p',{class:'muted'},access.configured?'Indtast den fælles firecifrede kode. Administratoradgang alene låser ikke panelet op.':'Serverejeren skal oprette den fælles firecifrede kode her. Den gemmes som en saltet hash.'),pin,h('button',{type:'submit',class:'btn',disabled:!access.configured&&!access.canSetup},access.configured?'Lås panelet op':'Opret kode og åbn'));
-    return [form];
-  }
+  await api('/api/guild/'+G.id+'/developer-access');
   const [reportCategories,initialTasks,panelConfig,initialColumns,initialPresence,initialWishConfig]=await Promise.all([api('/report-categories.json'),api(base),api(base+'/panel-config'),api(base+'/columns'),api(base+'/presence'),api(base+'/wish-panel-config')]);
   const reportLabel=p=>p?.reportCategory==='other'?p.reportCategoryCustom:reportCategories.find(c=>c.id===p?.reportCategory)?.label||'';
   let presence=initialPresence;const presenceRows=h('tbody');
@@ -208,8 +203,8 @@ async function renderDeveloperWorkspace() {
   const wishPanel=h('div',{class:'card'},h('h2',{},'Ønsker til serveren'),h('p',{class:'muted'},'MLO, biler, scripts og andre forslag behandles på denne separate tavle. Sagerne har samme samtale, billeder og ansvarlige udviklere som fejlmeldinger.'),wishChannel,h('button',{class:'btn',onclick:run(async()=>{await api(base+'/wishes/panel',{method:'POST',body:{channel:wishChannel.value}});toast('Ønskepanelet er sendt til Discord');})},'Send ønskepanel til Discord'));
   const buttonBuilder=await renderReportButtonBuilder(base,reportCategories,panelConfig);
   const discord=h('div',{class:'card'},h('span',{class:'workspace-eyebrow'},'DISCORD & OPSÆTNING'),h('h2',{},'Fejlmeldingspanel til borgerne'),h('p',{class:'muted'},'Vælg en kanal og send panelet. Borgeren kan indsende titel, beskrivelse og billede. Sagen lander på FiveM-arbejdstavlen.'),panelChannel,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{if(!panelChannel.value)throw new Error('Vælg en kanal');await api(base+'/panel',{method:'POST',body:{channel:panelChannel.value}});toast('Fejlmeldingspanelet er sendt til Discord');})},'Send panel til Discord')),h('p',{class:'muted'},'Borgerkommandoer: /fejl · /fejlstatus · /fejlsvar · /fejlbillede. Interne noter, planlægning og logs er kun til udviklere og administratorer.'));
-  const lockButton=h('button',{class:'btn sec',onclick:run(async()=>{if(!canLeave())return;dirty=false;await api('/api/guild/'+G.id+'/developer-access/lock',{method:'POST',body:{}});await route();})},'Lås udviklerpanelet');
-  const changePin=h('details',{class:'card'},h('summary',{},'Skift adgangskode (serverejeren)'),h('p',{class:'muted'},'Andre brugere bliver låst ude, når koden ændres.'),pin,h('button',{class:'btn',onclick:run(async()=>{await api('/api/guild/'+G.id+'/developer-access/change',{method:'POST',body:{pin:pin.value}});pin.value='';toast('Adgangskoden er ændret');})},'Gem ny firecifret kode'));
+  const lockButton=h('button',{class:'btn sec',onclick:run(async()=>{if(!canLeave())return;dirty=false;await api('/api/guild/'+G.id+'/developer-access/lock',{method:'POST',body:{}});me.access.unlocked=false;await route();})},'Lås udviklerpanelet');
+  const changePin=h('div',{class:'card'},h('h3',{},'Personlig adgang'),h('p',{class:'muted'},'Udviklerpanelet kræver både udviklerrollen på Discord og din personlige adgang. Administrér din kode under Min adgang.'));
   const registry=developerRegistry(base);
   const header=h('div',{class:'card work-header workspace-hero'},h('div',{},h('span',{class:'workspace-eyebrow'},'FIVEM · UDVIKLINGSCENTER'),h('h2',{},'Fra fejlmelding til færdig release'),h('p',{class:'muted'},'Én arbejdsplads til planlægning, dokumentation og borgersager.')),counts,lockButton);
   const layoutLock=h('button',{class:'btn sec',onclick:()=>{layout.toggle();layoutLock.textContent=layout.locked?'🔒 Lås layout op':'🔓 Lås layout';draw();drawColumns();}},layout.locked?'🔒 Lås layout op':'🔓 Lås layout');

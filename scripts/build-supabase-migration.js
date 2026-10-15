@@ -44,5 +44,5 @@ GRANT EXECUTE ON FUNCTION public.allbot_execute(TEXT,JSONB) TO service_role;
 `;
 // Only these reviewed application statements are callable; clients cannot submit SQL.
 const inserts = [...queries].map(sql=>`INSERT INTO allbot.query_templates (key,statement,parameters) VALUES (${literal(keyFor(sql))},${literal(postgresSql(sql))},${(sql.match(/\?/g)||[]).length}) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;`).join('\n');
-fs.writeFileSync(path.join(__dirname,'../supabase-allbot.sql'),POSTGRES_SCHEMA+'\n'+rpc+'\n'+inserts+'\nALTER TABLE allbot.panel_media ENABLE ROW LEVEL SECURITY;\nALTER TABLE allbot.dev_presence ENABLE ROW LEVEL SECURITY;\nALTER TABLE allbot.dev_registry ENABLE ROW LEVEL SECURITY;\n');
+fs.writeFileSync(path.join(__dirname,'../supabase-allbot.sql'),POSTGRES_SCHEMA+'\n'+rpc+'\n'+inserts+'\nALTER TABLE allbot.panel_users ENABLE ROW LEVEL SECURITY;\nALTER TABLE allbot.panel_invites ENABLE ROW LEVEL SECURITY;\nALTER TABLE allbot.panel_media ENABLE ROW LEVEL SECURITY;\nALTER TABLE allbot.dev_presence ENABLE ROW LEVEL SECURITY;\nALTER TABLE allbot.dev_registry ENABLE ROW LEVEL SECURITY;\n');
 console.log(`Migration generated with ${queries.size} approved statements.`);

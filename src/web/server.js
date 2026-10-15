@@ -14,7 +14,7 @@ const community = require('../modules/community');
 const music = require('../modules/music-fleet');
 const { parseDuration } = require('../util');
 
-const gate=require('../modules/developer-gate');
+const personal=require('../modules/personal-access');
 const audit=require('../modules/site-audit');
 const stream=require('../modules/stream-platforms');
 const {isManager}=require('../access');
@@ -38,7 +38,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get(['/login', '/auth/login'], (req, res) => {
     if (!databaseReady || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) return res.status(503).send('AllBot mangler opsætning. Tilføj DATABASE_URL, DISCORD_CLIENT_ID og DISCORD_CLIENT_SECRET i Render Environment.');
     req.session.state = crypto.randomBytes(16).toString('hex');
-    const q = new URLSearchParams({ client_id: process.env.DISCORD_CLIENT_ID, redirect_uri: REDIRECT, response_type: 'code', scope: 'identify guilds', state: req.session.state, prompt: 'none' });
+    const q = new URLSearchParams({ client_id: process.env.DISCORD_CLIENT_ID, redirect_uri: REDIRECT, response_type: 'code', scope: 'identify', state: req.session.state, prompt: 'none' });
     res.redirect(`https://discord.com/oauth2/authorize?${q}`);
   });
 
@@ -52,14 +52,12 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       })).json();
       if (!tok.access_token) throw new Error(tok.error_description || 'Token-fejl');
       const auth = { Authorization: `Bearer ${tok.access_token}` };
-      const [user, guilds] = await Promise.all([fetch(`${API}/users/@me`, { headers: auth }).then((r) => r.json()), fetch(`${API}/users/@me/guilds`, { headers: auth }).then((r) => r.json())]);
-      if (!user.id || !Array.isArray(guilds)) throw new Error('Discord kunne ikke bekræfte brugeren');
+      const user=await fetch(`${API}/users/@me`,{headers:auth}).then(r=>r.json());
+      if (!user.id) throw new Error('Discord kunne ikke bekræfte brugeren');
       req.session.regenerate((err) => {
         if (err) return res.status(500).send('Session-fejl');
         req.session.user = { id: user.id, username: user.global_name || user.username, avatar: user.avatar };
-        req.session.guilds = (Array.isArray(guilds) ? guilds : [])
-          .filter((g) => g.owner || (BigInt(g.permissions) & (PermissionFlagsBits.ManageGuild | PermissionFlagsBits.Administrator)) !== 0n)
-          .map((g) => ({ id: g.id, name: g.name, icon: g.icon }));
+        req.session.guilds=[];
         res.redirect('/');
       });
     } catch (e) { console.error('[login]', e.message); res.status(500).send('Login fejlede. Prøv igen.'); }
@@ -68,14 +66,16 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
   // ---------- Adgangskontrol ----------
-  const auth = (req, res, next) => (req.session.user ? next() : res.status(401).json({ error: 'Ikke logget ind' }));
+  const discordAuth=(req,res,next)=>req.session.user?next():res.status(401).json({error:'Log ind med Discord'});
+  const auth=async(req,res,next)=>discordAuth(req,res,async()=>{try{const guild=client.guilds.cache.get(personal.targetId());if(!guild||req.params.gid&&req.params.gid!==guild.id)return res.status(403).json({error:'Denne hjemmeside tilhører Dream Network'});const identity=await personal.status(guild,req.session);if(!identity.eligible)return res.status(403).json({error:'Du mangler en adgangsgivende Discord-rolle'});if(!identity.unlocked)return res.status(428).json({error:'Log ind med din personlige kode'});req.panelIdentity=identity;req.guild=guild;next();}catch{res.status(503).json({error:'Adgangen kunne ikke kontrolleres'});}});
+  const ownerAccess=(req,res,next)=>req.panelIdentity?.owner?next():res.status(403).json({error:'Kun ejeren har adgang'});
   const guildAccess = async (req, res, next) => {
     try {
     const gid = req.params.gid;
     const guild = client.guilds.cache.get(gid);
 
     if (!guild) return res.status(404).json({ error: 'Botten er ikke på denne server' });
-    if (!owners.includes(req.session.user.id) && !await isManager(guild,req.session.user.id)) return res.status(403).json({ error: 'Du mangler administratoradgang' });
+    if (!req.panelIdentity?.manager) return res.status(403).json({ error: 'Du mangler administratoradgang' });
     req.guild = guild;
     next();
     } catch { res.status(503).json({ error: 'Adgang kunne ikke kontrolleres' }); }
@@ -99,26 +99,31 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.get('origin') !== BASE) return res.status(403).json({ error: 'Ugyldig oprindelse' });
     next();
   });
+  const accessGuild=()=>{const guild=client.guilds.cache.get(personal.targetId());if(!guild)throw new Error('Serveren er ikke tilsluttet');return guild;};
+  app.get('/api/access/status',discordAuth,wrap(req=>personal.status(accessGuild(),req.session)));
+  app.post('/api/access/bootstrap',discordAuth,wrap(req=>personal.issue(accessGuild(),req.session.user.id,req.session.user.id,true)));
+  app.post('/api/access/check-invite',discordAuth,wrap(req=>personal.checkInvite(accessGuild(),req.session,req.body.code,req.ip)));
+  app.post('/api/access/activate',discordAuth,wrap(req=>personal.activate(accessGuild(),req.session,req.body.code,req.body.password,req.body.confirm,req.ip)));
+  app.post('/api/access/unlock',discordAuth,wrap(req=>personal.unlock(accessGuild(),req.session,req.body.password,req.ip)));
+  app.post('/api/access/change',auth,wrap(req=>personal.change(accessGuild(),req.session,req.body.old,req.body.password,req.body.confirm,req.ip)));
+  app.post('/api/access/lock',discordAuth,wrap(req=>personal.lock(accessGuild().id,req.session)));
+  app.get('/api/access/users',auth,ownerAccess,wrap(()=>personal.users(accessGuild().id)));
+  app.post('/api/access/invites',auth,ownerAccess,wrap(req=>personal.issue(accessGuild(),req.session.user.id,req.body.userId)));
+  app.post('/api/access/revoke',auth,ownerAccess,wrap(req=>personal.revoke(accessGuild(),req.session.user.id,req.body.userId)));
   const devRoleAccess = async (req,res,next) => {
     try {
       const guild = client.guilds.cache.get(req.params.gid);
-      if (!guild || !await developer.canManage(guild, req.session.user.id)) return res.status(403).json({error:'Kræver udviklerrolle eller administrator'});
+      if (!guild || !req.panelIdentity?.developer) return res.status(403).json({error:'Kræver den aktuelle udviklerrolle på Discord'});
       req.guild = guild; next();
     } catch { res.status(503).json({error:'Adgang kunne ikke kontrolleres'}); }
   };
   const devAccess=async(req,res,next)=>devRoleAccess(req,res,async()=>{
-    try{if(!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Udviklerpanelet er låst. Indtast den firecifrede kode.'});next();}
+    try{if(!req.panelIdentity?.unlocked)return res.status(423).json({error:'Log ind med din personlige kode.'});next();}
     catch{res.status(503).json({error:'Adgangskoden kunne ikke kontrolleres'});}
   });
-  app.get('/api/guild/:gid/developer-access',auth,devRoleAccess,wrap(req=>gate.status(req.guild,req.session)));
+  app.get('/api/guild/:gid/developer-access',auth,devRoleAccess,wrap(req=>({configured:true,unlocked:req.panelIdentity.unlocked,canSetup:false})));
   app.post('/api/guild/:gid/developer-access/:action',auth,devRoleAccess,wrap(async req=>{
-    switch(req.params.action){
-      case 'setup':return gate.setup(req.guild,req.session,req.body.pin);
-      case 'unlock':return gate.unlock(req.guild,req.session,req.body.pin,req.ip);
-      case 'change':return gate.change(req.guild,req.session,req.body.pin);
-      case 'lock':if(req.session.devGate)delete req.session.devGate[req.guild.id];await audit.record(req.guild.id,req.session.user.id,'developer','panel_locked');return {ok:true};
-      default:throw new Error('Ukendt adgangshandling');
-    }
+    if(req.params.action==='lock')return personal.lock(req.guild.id,req.session);throw new Error('Brug din personlige kode under Min adgang. Den fælles kode bruges ikke længere.');
   }));
   app.post('/api/guild/:gid/developer/:id/files',auth,devAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/developer-files').upload(req.guild.id,Number(req.params.id),req.session.user.id,req.body)));
   app.get('/api/guild/:gid/developer/:id/files/:fid',auth,devAccess,wrap(async(req,res)=>{
@@ -139,7 +144,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').page(req.guild.id,req.query.before)));
   app.get('/api/guild/:gid/developer/presence',auth,devAccess,wrap(req=>require('../modules/developer-presence').list(req.guild.id)));
   app.post('/api/guild/:gid/developer/presence',auth,devAccess,wrap(req=>require('../modules/developer-presence').heartbeat(req.guild.id,req.session.user.id,req.session.user.username,Date.now(),req.body.active!==false)));
-  app.get('/api/guild/:gid/developer/people',auth,devAccess,wrap(async req=>{const members=await req.guild.members.fetch(),cfg=await settings.get(req.guild.id);return [...members.values()].filter(m=>!m.user.bot&&(m.id===req.guild.ownerId||m.permissions.has(PermissionFlagsBits.Administrator)||m.permissions.has(PermissionFlagsBits.ManageGuild)||[...cfg.developer.roles,...cfg.general.adminRoles].some(id=>m.roles.cache.has(id)))).map(m=>({id:m.id,name:m.user.globalName||m.user.username}));}));
+  app.get('/api/guild/:gid/developer/people',auth,devAccess,wrap(async req=>{const members=await req.guild.members.fetch(),cfg=await settings.get(req.guild.id);return [...members.values()].filter(m=>!m.user.bot&&(cfg.developer.roles.some(id=>m.roles.cache.has(id)))).map(m=>({id:m.id,name:m.user.globalName||m.user.username}));}));
   app.get('/api/guild/:gid/developer/wish-panel-config',auth,devAccess,wrap(async req=>(await settings.get(req.guild.id)).developer.wishPanel||require('../modules/developer-wishes').defaults));
   app.put('/api/guild/:gid/developer/wish-panel-config',auth,devAccess,wrap(async req=>{const wishPanel=require('../modules/report-panel-config').validate(req.body),cfg=(await settings.get(req.guild.id)).developer;await settings.setModule(req.guild.id,'developer',{...cfg,wishPanel});await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:'wishPanel',settings:wishPanel});return wishPanel;}));
   app.post('/api/guild/:gid/developer/wishes/panel',auth,devAccess,wrap(async req=>{const cfg=(await settings.get(req.guild.id)).developer,ch=await req.guild.channels.fetch(req.body.channel);if(!ch?.isTextBased())throw new Error('Vælg en tekstkanal');await ch.send(require('../modules/developer-wishes').panel(cfg.wishPanel));return {ok:true};}));
@@ -185,26 +190,11 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       supabaseKey: !!process.env.SUPABASE_SERVICE_KEY,
     },
   }));
-  app.get('/api/me', auth, async (req, res) => {
-    const mine = owners.includes(req.session.user.id)
-      ? [...client.guilds.cache.values()].map((g) => ({ id: g.id, name: g.name, icon: g.icon }))
-      : req.session.guilds;
-    for (const guild of client.guilds.cache.values()) {
-      if (!mine.some(g=>g.id===guild.id) && await developer.canManage(guild,req.session.user.id)) mine.push({id:guild.id,name:guild.name,icon:guild.icon});
-    }
-    const ids = new Set(mine.map((g) => g.id));
-    const extra = owners.includes(req.session.user.id) ? [] : req.session.guilds.filter((g) => !ids.has(g.id));
-    res.json({
-      user: req.session.user,
-      botReady: client.isReady(),
-      invite: client.user ? `https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot+applications.commands&permissions=8` : null,
-      guilds: [...mine, ...extra].map((g) => ({ ...g, botIn: client.guilds.cache.has(g.id) })),
-    });
-  });
+  app.get('/api/me',discordAuth,wrap(async req=>{const guild=client.guilds.cache.get(personal.targetId());if(!guild)throw new Error('Dream Network er ikke tilsluttet');return {user:req.session.user,targetGuildId:guild.id,access:await personal.status(guild,req.session),botReady:client.isReady()};}));
 
-  app.get('/api/guild/:gid', auth, devRoleAccess, wrap(async (req) => {
+  app.get('/api/guild/:gid', auth, wrap(async (req) => {
     const g = req.guild;
-    if (!await isManager(g,req.session.user.id)) {
+    if (!req.panelIdentity.manager) {
       return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{appearance:(await settings.get(g.id)).appearance},stats:{}};
     }
     const channels = [...g.channels.cache.values()].sort((a, b) => a.rawPosition - b.rawPosition);
@@ -234,7 +224,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
 
   const protectDeveloperSettings=async(req,res,next)=>{
     if(!['/settings/developer','/panel/developer'].some(s=>req.path.endsWith(s)))return next();
-    if(!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});next();
+    if(!req.panelIdentity.developer)return res.status(403).json({error:'Kræver udviklerrolle'});next();
   };
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
     if(req.params.module==='restart')return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
@@ -256,7 +246,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     await fn(req.guild, req.body.channel);
   }));
 
-  app.get('/api/guild/:gid/audit/:module',auth,guildAccess,wrap(async(req,res)=>{if(req.params.module!=='developer')return res.status(404).json({error:'Denne log er fjernet'});if(req.params.module==='developer'&&!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});return audit.page(req.guild.id,req.params.module,req.query.before);}));
+  app.get('/api/guild/:gid/audit/:module',auth,guildAccess,wrap(async(req,res)=>{if(req.params.module!=='developer')return res.status(404).json({error:'Denne log er fjernet'});if(req.params.module==='developer'&&!req.panelIdentity.developer)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});return audit.page(req.guild.id,req.params.module,req.query.before);}));
   app.post('/api/guild/:gid/audit/interaction',auth,devRoleAccess,wrap(async req=>{
     const {module,action}=req.body||{};
     if(!audit.modules.includes(module)||typeof action!=='string'||action.length>100)throw new Error('Ugyldig hændelse');
