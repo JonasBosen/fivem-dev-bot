@@ -400,11 +400,11 @@ async function route() {
   try {
     if (!G || G.id !== gid) G = await api(`/api/guild/${gid}`);
   } catch (e) { toast(e.message, true); location.hash = ''; return; }
-  if (G.developerOnly && !['developer','account'].includes(page)) { location.hash = '#/g/'+gid+'/developer'; return; }
+  if (G.developerOnly && !['developer','account','appearance'].includes(page)) { location.hash = '#/g/'+gid+'/developer'; return; }
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
-    orderedPages().filter(p=>(!G.developerOnly||['developer','account'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
+    orderedPages().filter(p=>(!G.developerOnly||['developer','account','appearance'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
     h('div', { class: 'foot' }, h('a', { href: '#/g/'+gid+'/account' }, 'Min adgang'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
   const main = h('main', {}, h('div', { class: 'top' },
     h('button', { class: 'btn sec menu-btn', onclick: () => side.classList.toggle('open') }, '☰'),

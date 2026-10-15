@@ -107,6 +107,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/access/unlock',discordAuth,wrap(req=>personal.unlock(accessGuild(),req.session,req.body.password,req.ip)));
   app.post('/api/access/change',auth,wrap(req=>personal.change(accessGuild(),req.session,req.body.old,req.body.password,req.body.confirm,req.ip)));
   app.post('/api/access/lock',discordAuth,wrap(req=>personal.lock(accessGuild().id,req.session)));
+  const appearanceKey=req=>'personal-appearance:'+req.guild.id+':'+req.session.user.id;
+  const myAppearance=async req=>{const row=await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(appearanceKey(req));if(row)return JSON.parse(row.data).appearance;return req.panelIdentity.owner?(await settings.get(req.guild.id)).appearance:require('../modules/appearance').defaults;};
+  app.put('/api/guild/:gid/my-appearance',auth,wrap(async req=>{const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}));
   app.get('/api/access/users',auth,ownerAccess,wrap(()=>personal.users(accessGuild().id)));
   app.post('/api/access/invites',auth,ownerAccess,wrap(req=>personal.issue(accessGuild(),req.session.user.id,req.body.userId)));
   app.post('/api/access/revoke',auth,ownerAccess,wrap(req=>personal.revoke(accessGuild(),req.session.user.id,req.body.userId)));
@@ -195,7 +198,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get('/api/guild/:gid', auth, wrap(async (req) => {
     const g = req.guild;
     if (!req.panelIdentity.manager) {
-      return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{appearance:(await settings.get(g.id)).appearance},stats:{}};
+      return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{appearance:await myAppearance(req)},stats:{}};
     }
     const channels = [...g.channels.cache.values()].sort((a, b) => a.rawPosition - b.rawPosition);
     const [guildSettings,openTickets,totalTickets,pendingApps,activeGiveaways,warningCount]=await Promise.all([
@@ -206,7 +209,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     return {
       id: g.id, name: g.name, icon: g.iconURL(), members: g.memberCount,
       developerOnly: false,
-      settings: guildSettings,
+      settings: {...guildSettings,appearance:await myAppearance(req)},
       defaults: DEFAULTS,
       channels: channels.filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement).map((c) => ({ id: c.id, name: c.name })),
       voiceChannels: channels.filter((c) => c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice).map((c) => ({ id: c.id, name: c.name })),
@@ -229,7 +232,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
     if(req.params.module==='restart')return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
     if(['birthdays','slideshow'].includes(req.params.module))return require('../modules/community-studios').configure(req.guild,req.params.module,req.body);
-    if(req.params.module==='appearance')req.body=require('../modules/appearance').validate(req.body);
+    if(req.params.module==='appearance'){const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}
     if(req.params.module==='welcome')req.body=require('../modules/panel-media').validate(req.body);
     if(['tickets','applications'].includes(req.params.module))req.body=require('../modules/panel-media').validateForms(req.params.module,req.body);
     if(req.params.module==='stream')req.body=stream.validateConfig(req.body);

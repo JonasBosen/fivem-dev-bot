@@ -131,3 +131,5 @@ body{background-size:cover;background-position:center;background-attachment:fixe
 .work-lane[data-column-id]{background:linear-gradient(color-mix(in srgb,var(--state) 13%,var(--panel)),var(--panel))}.work-lane[data-column-id] h3{color:var(--state)!important;cursor:grab}.work-lane.layout-locked h3{cursor:default}.column-editor{margin-bottom:18px}.column-editor input[type=color]{width:100%}
 
 .personal-access{min-height:100dvh}.personal-access>.card{width:min(520px,94vw);padding:32px}.personal-access form{display:grid;gap:14px;margin:20px 0}.personal-access input{width:100%;min-height:44px}.personal-access button{margin:6px 0}.invitation-code{display:block;padding:18px;font-size:22px;letter-spacing:.1em;background:var(--bg);border-radius:10px;overflow-wrap:anywhere}
+
+.access-denied{width:min(960px,95vw);max-width:960px;text-align:center;overflow:hidden;padding:0 0 24px}.access-denied-image{width:100%;height:auto;display:block}.access-denied h2{padding:0 20px}.access-denied .btn{margin-top:12px}
