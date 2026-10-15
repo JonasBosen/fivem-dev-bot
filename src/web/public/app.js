@@ -392,7 +392,7 @@ async function route() {
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(h('div', {}, content));
+    main.lastChild.replaceWith(page==='developer'?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 

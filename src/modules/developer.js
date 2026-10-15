@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, LabelBuilder, FileUploadBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { db, settings } = require('../db');
 const {isManager}=require('../access');
-const STATUS = { todo: 'Afventer behandling', doing: 'I gang', done: 'Færdig', rejected: 'Afvist' };
+const STATUS = { todo: 'Afventer behandling', doing: 'I gang', done: 'Færdig', closed: 'Afsluttet', rejected: 'Afvist' };
 const parse = r => r && ({ ...r, checklist: JSON.parse(r.checklist || '[]'), attachments: JSON.parse(r.attachments || '[]') });
 async function canReport(guild,uid) {
   const config=(await settings.get(guild.id)).developer;
@@ -76,7 +76,7 @@ async function create(guild, uid, input, attachment) {
   return get(guild.id, Number(result.lastInsertRowid));
 }
 function view(task) {
-  const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
+  const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, closed: 0x10b981, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
   if (task.attachments[0]) embed.setImage(task.attachments[0].url);
   const latest = (task.comments || []).slice(0,3).reverse();
   if(latest.length) embed.addFields({name:'Seneste beskeder',value:latest.map(c=>`${c.author_type==='developer'?'Udvikler':'Borger'}: ${c.body.slice(0,270)}`).join('\n\n').slice(0,1024)});
