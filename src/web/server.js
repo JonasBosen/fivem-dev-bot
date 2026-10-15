@@ -304,6 +304,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
 
   app.get('/api/guild/:gid/members/events',auth,guildAccess,wrap(req=>require('../modules/members-panel').events(req.guild.id,req.query.before)));
+  app.get('/api/guild/:gid/members/banned',auth,guildAccess,wrap(async req=>({members:await require('../modules/members-panel').bans(req.guild)})));
+  app.get('/api/guild/:gid/members/departed',auth,guildAccess,wrap(req=>require('../modules/members-panel').departed(req.guild,req.query.before)));
   app.get('/api/guild/:gid/members',auth,guildAccess,wrap(req=>require('../modules/members-panel').list(req.guild,req.session.user.id,req.query.search,req.query.page)));
   app.put('/api/guild/:gid/members/:uid/roles/:rid',auth,guildAccess,wrap(req=>require('../modules/members-panel').changeRole(req.guild,req.session.user.id,req.params.uid,req.params.rid,true)));
   app.delete('/api/guild/:gid/members/:uid/roles/:rid',auth,guildAccess,wrap(req=>require('../modules/members-panel').changeRole(req.guild,req.session.user.id,req.params.uid,req.params.rid,false)));
