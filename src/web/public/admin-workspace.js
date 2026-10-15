@@ -1,0 +1,73 @@
+function applyAppearance(input={}){
+  const cfg={title:'Alle bots samlet',accent:'#7c6cff',background:'#0f1115',panel:'#171a21',text:'#e6e8ee',radius:12,density:'comfortable',backgroundImage:'',...input};
+  const root=document.documentElement;
+  for(const [key,variable]of Object.entries({accent:'--accent',background:'--bg',panel:'--panel',text:'--text'}))if(/^#[0-9a-f]{6}$/i.test(cfg[key]))root.style.setProperty(variable,cfg[key]);
+  root.style.setProperty('--r',Math.max(0,Math.min(30,Number(cfg.radius)))+'px');
+  document.body.classList.toggle('compact',cfg.density==='compact');
+  document.body.style.backgroundImage='';
+  if(cfg.backgroundImage){try{const url=new URL(cfg.backgroundImage);if(url.protocol==='https:')document.body.style.backgroundImage='linear-gradient(#0f1115b8,#0f1115d9), url('+JSON.stringify(url.href)+')';}catch{}}
+  document.title=cfg.title;
+}
+async function renderAppearance(){
+  const draft=structuredClone(G.settings.appearance);
+  const preview=()=>applyAppearance(draft);
+  const form=h('div',{class:'grid'},field({k:'title',l:'Sidens navn'},draft),...['accent','background','panel','text'].map((k,i)=>h('label',{class:'f'},h('span',{},['Accentfarve','Baggrundsfarve','Panelfarve','Tekstfarve'][i]),h('input',{type:'color',value:draft[k],oninput:e=>{draft[k]=e.target.value;preview();}}))),field({k:'backgroundImage',l:'Baggrundsbillede (HTTPS-link)'},draft),field({k:'radius',l:'Afrunding på paneler (0–30)',t:'number',min:0,max:30},draft),h('label',{class:'f'},'Tæthed',h('select',{onchange:e=>{draft.density=e.target.value;preview();}},...['comfortable','compact'].map(v=>h('option',{value:v,selected:draft.density===v},v==='compact'?'Kompakt':'Luftig')))));
+  form.addEventListener('input',preview);
+  return [h('div',{class:'card workspace-hero'},h('span',{class:'workspace-eyebrow'},'DIT DASHBOARD'),h('h2',{},'Indstillinger for siden'),h('p',{class:'muted'},'Designet deles af serverens dashboard. Prøv farver og baggrund her; gem for at gøre dem fælles.'),form,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{G.settings.appearance=await api(`/api/guild/${G.id}/settings/appearance`,{method:'PUT',body:draft});preview();toast('Sidens design er gemt');})},'Gem design'),h('button',{class:'btn sec',onclick:()=>{applyAppearance(G.settings.appearance);toast('Gemt design er vist igen');}},'Vis gemt design')))];
+}
+async function renderSiteLogs(){
+  const categories=PAGES.filter(p=>p[0]!=='logs').map(([id,icon,label])=>({id,icon,label}));
+  categories.push({id:'general',icon:'⚙',label:'Generelt'},{id:'verification',icon:'✓',label:'Verificering'});
+  const sections=categories.map(c=>{
+    const body=h('div'),count=h('p',{class:'muted'});let next=null,loaded=false,busy=false,n=0;
+    const more=h('button',{class:'btn sec',onclick:run(()=>load(false))},'Hent ældre logs');more.hidden=true;
+    async function load(reset){if(busy)return;busy=true;try{
+      const result=await api(`/api/guild/${G.id}/audit/${c.id}`+(!reset&&next?'?before='+next:''));
+      if(reset){body.replaceChildren();n=0;}
+      body.append(...result.events.map(e=>h('details',{class:'work-comment'},h('summary',{},date(e.created_at)+' · '+e.user_id+' · '+e.action),h('pre',{class:'audit-json'},JSON.stringify(e.details,null,2)))));
+      n+=result.events.length;next=result.next;more.hidden=!next;loaded=true;count.textContent=n+' hændelser indlæst';
+    }finally{busy=false;}}
+    return {...c,content:[h('div',{class:'card'},h('h2',{},c.label+' · historik'),h('p',{class:'muted'},'Bruger-ID, tidspunkt, navigation og gemte ændringer. Historikken slettes ikke automatisk.'),c.id==='developer'&&h('a',{href:`#/g/${G.id}/developer`,class:'btn sec'},'Åbn også detaljeret sagslog'),h('button',{class:'btn sec',onclick:run(()=>load(true))},'Opdatér log'),count,body,more)],onOpen:()=>{if(!loaded)load(true).catch(e=>toast(e.message,true));}};
+  });
+  return [dashboardTabs(sections,G.id+'-site-logs')];
+}
+async function renderStreamWorkspace(){
+  let accounts=await api(`/api/guild/${G.id}/stream/accounts`);
+  const status=await api(`/api/guild/${G.id}/stream/status`);
+  const names={twitch:'Twitch',youtube:'YouTube',kick:'Kick',tiktok:'TikTok'};
+  const sections=Object.entries(names).map(([platform,label])=>{
+    const cfg=structuredClone(G.settings.stream.platforms[platform]);
+    const form=h('div',{class:'grid'},...[
+      {k:'enabled',t:'toggle',l:'Aktivér '+label},{k:'channel',t:'channel',l:'Discord-kanal til streambeskeder'},
+      {k:'streamerRole',t:'role',l:'Rolle der giver ret til at være streamer'},{k:'pingRole',t:'role',l:'PING-rolle (modtagere)'},
+      {k:'deleteWhenOffline',t:'toggle',l:'Slet beskeden, når streamen slutter'},
+      {k:'message',t:'textarea',l:'Streambesked',hint:'{name} {title} {game} {url}'}
+    ].map(f=>field(f,cfg)));
+    const member=h('select',{},h('option',{value:''},'Hent medlemmer med streamerrollen'));
+    const userId=h('input',{placeholder:'Eller indsæt Discord-bruger-ID','aria-label':label+' Discord-bruger-ID'});
+    const handle=h('input',{placeholder:platform==='youtube'?'YouTube kanal-ID (UC…)':'Brugernavn på '+label,'aria-label':label+' kanal'});
+    const rows=h('div');
+    function draw(){rows.replaceChildren(...accounts.filter(a=>a.platform===platform).map(a=>h('div',{class:'row top'},h('div',{},h('b',{},a.handle),h('div',{class:'muted'},'Discord: '+a.user_id)),h('button',{class:'btn bad sm',onclick:run(async()=>{accounts=await api(`/api/guild/${G.id}/stream/accounts/${platform}/${a.user_id}`,{method:'DELETE'});draw();toast('Tilknytningen er fjernet');})},'Fjern'))));}
+    draw();
+    const note=platform==='tiktok'?'TikTok bruger manuel start og slut med /stream live og /stream slut. Automatisk live-status er endnu ikke tilsluttet.':platform==='youtube'?'Nye livestreams findes cirka hvert 30. minut af hensyn til API-kvoten. Aktive streams kontrolleres hvert 2. minut. Flere kanaler kan kræve højere YouTube-kvote.':'Live-status kontrolleres cirka hvert 2. minut. Platformfejl behandles ikke som en afsluttet stream.';
+    return {id:platform,label,icon:platform==='kick'?'K':'●',content:[
+      h('div',{class:'card workspace-hero'},h('span',{class:'workspace-eyebrow'},label.toUpperCase()+' · STREAMCENTER'),h('h2',{},label+' stream-alerts'),h('span',{class:'badge '+(status[platform]?'open':'closed')},status[platform]?'API-oplysninger tilsluttet':'Manuel start/slut tilgængelig'),h('p',{class:'muted'},note),!status[platform]&&platform!=='tiktok'&&h('p',{class:'muted'},'Automatik kræver '+({twitch:'TWITCH_CLIENT_ID og TWITCH_CLIENT_SECRET',youtube:'YOUTUBE_API_KEY',kick:'KICK_CLIENT_ID og KICK_CLIENT_SECRET'}[platform])+' på Render.'),form,h('button',{class:'btn',onclick:run(async()=>{
+        const latest=await api(`/api/guild/${G.id}`);const draft=latest.settings.stream;draft.platforms[platform]=cfg;
+        G.settings.stream=await api(`/api/guild/${G.id}/settings/stream`,{method:'PUT',body:draft});toast(label+' er gemt');
+      })},'Gem '+label)),
+      h('div',{class:'card'},h('h2',{},'Discord-bruger → streamkanal'),h('p',{class:'muted'},'Gem først streamerrollen ovenfor. Giv rollen til personen og tilknyt deres kanal her én gang. Rollen alene fortæller ikke, hvilken konto personen streamer fra.'),h('button',{class:'btn sec',onclick:run(async()=>{
+        const saved=G.settings.stream.platforms[platform];if(!saved.streamerRole)throw new Error('Gem en streamerrolle først');
+        const members=await api(`/api/guild/${G.id}/stream/members?role=${saved.streamerRole}`);
+        member.replaceChildren(h('option',{value:''},'Vælg Discord-person'),...members.map(m=>h('option',{value:m.id},m.name+' · '+m.id)));toast(members.length+' medlemmer fundet');
+      })},'Hent personer med rollen'),h('div',{class:'grid'},member,userId,handle),h('button',{class:'btn',onclick:run(async()=>{accounts=await api(`/api/guild/${G.id}/stream/accounts`,{method:'POST',body:{platform,userId:userId.value.trim()||member.value,handle:handle.value}});draw();handle.value='';toast('Streamkanalen er knyttet til personen');})},'Tilknyt streamkanal'),rows,h('p',{class:'muted'},'Personen kan også selv bruge /stream tilmeld. PING-rollen får kun besked ved start. Botten skal kunne sende og slette sine beskeder i kanalen.'))
+    ]};
+  });
+  return [dashboardTabs(sections,G.id+'-streams')];
+}
+document.addEventListener('click',event=>{
+  if(!G||!me)return;
+  const el=event.target.closest('button,a,summary');if(!el||el.closest('#toast'))return;
+  const module=location.hash.split('/')[3]||'overview';
+  const action=(el.getAttribute('aria-label')||el.textContent||'').trim().slice(0,100);if(!action)return;
+  api(`/api/guild/${G.id}/audit/interaction`,{method:'POST',body:{module,action}}).catch(()=>{});
+});

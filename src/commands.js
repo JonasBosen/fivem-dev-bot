@@ -4,7 +4,12 @@ const { SlashCommandBuilder: S, PermissionFlagsBits: P, REST, Routes, Interactio
 const user = (o, req = true) => o.setName('bruger').setDescription('Brugeren').setRequired(req);
 const reason = (o) => o.setName('årsag').setDescription('Årsag');
 
+const platformOption=o=>o.setName('platform').setDescription('Streamplatform').setRequired(true).addChoices(...['twitch','youtube','kick','tiktok'].map(value=>({name:value,value})));
 const definitions = [
+  new S().setName('stream').setDescription('Tilknyt din streamkanal eller meld live/slut')
+    .addSubcommand(s=>s.setName('tilmeld').setDescription('Knyt din kanal til din Discord-bruger').addStringOption(platformOption).addStringOption(o=>o.setName('kanal').setDescription('Brugernavn eller YouTube UC-kanal-ID').setRequired(true)))
+    .addSubcommand(s=>s.setName('live').setDescription('Send en streambesked manuelt').addStringOption(platformOption).addStringOption(o=>o.setName('titel').setDescription('Streamens titel').setMaxLength(200)))
+    .addSubcommand(s=>s.setName('slut').setDescription('Afslut din stream og anvend oprydning').addStringOption(platformOption)),
   new S().setName('fejl').setDescription('Meld en fejl til udvikleren')
     .addStringOption(o=>o.setName('titel').setDescription('Kort titel').setRequired(true).setMaxLength(200))
     .addStringOption(o=>o.setName('beskrivelse').setDescription('Beskriv fejlen og hvordan den genskabes').setRequired(true).setMaxLength(4000))
@@ -57,6 +62,7 @@ const definitions = [
     .addSubcommand((s) => s.setName('reroll').setDescription('Træk nye vindere').addIntegerOption((o) => o.setName('id').setDescription('Giveaway ID').setRequired(true))),
   // Musik
   new S().setName('play').setDescription('Afspil en sang eller playliste').addStringOption((o) => o.setName('sang').setDescription('Navn eller link').setRequired(true)),
+  new S().setName('next').setDescription('Afspil næste nummer'),
   new S().setName('skip').setDescription('Spring over'),
   new S().setName('pause').setDescription('Pause'),
   new S().setName('resume').setDescription('Fortsæt'),

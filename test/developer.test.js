@@ -20,7 +20,7 @@ test('developer workflow persists checklist, rejects stale edits and isolates gu
     await assert.rejects(developer.update({...guild,id:'guild-b'},task.id,{...task,status:'done'},'dev'),/findes ikke/);
     await assert.rejects(developer.update(guild,task.id,{...task,status:'unknown'},'dev'),/Ukendt status/);
     task = await developer.update(guild,task.id,{...task,status:'done'},'dev');
-    assert.equal(task.status,'done');
+    assert.equal(task.status,'closed');
     assert.equal((await db.prepare('SELECT * FROM dev_history WHERE guild_id=?').all(guild.id)).length,2);
     await db.prepare('UPDATE dev_tasks SET channel_id=?,message_id=? WHERE guild_id=? AND id=?').run('channel','message',guild.id,task.id);
     await developer.sync({channels:{fetch:async()=>{throw new Error('offline');}}},await developer.get(guild.id,task.id));
@@ -28,7 +28,7 @@ test('developer workflow persists checklist, rejects stale edits and isolates gu
     let sent;
     await developer.sync({channels:{fetch:async()=>({messages:{fetch:async()=>({edit:async payload=>sent=payload})}})}},await developer.get(guild.id,task.id));
     assert.equal((await developer.get(guild.id,task.id)).sync_error,'');
-    assert.equal(sent.embeds[0].data.fields[0].value,'Færdig');
+    assert.equal(sent.embeds[0].data.fields[0].value,'Afsluttet');
     assert.ok(!JSON.stringify(sent).includes('Undersøger garage-script'));
   } finally { await db.close(); }
 });

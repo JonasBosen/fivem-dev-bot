@@ -1,8 +1,22 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, StringSelectMenuBuilder, LabelBuilder, FileUploadBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { db, settings } = require('../db');
 const {isManager}=require('../access');
-const STATUS = { todo: 'Afventer behandling', doing: 'I gang', done: 'Færdig', closed: 'Afsluttet', rejected: 'Afvist' };
-const parse = r => r && ({ ...r, checklist: JSON.parse(r.checklist || '[]'), attachments: JSON.parse(r.attachments || '[]') });
+const STATUS = { todo: 'Afventer behandling', doing: 'I gang', closed: 'Afsluttet', rejected: 'Afvist' };
+function replyComponents(task){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`dev:reply:${task.guild_id}:${task.id}`).setLabel('Svar på sagen').setStyle(ButtonStyle.Primary))];}
+async function onDirectReply(i,client){
+  const [,action,gid,rawId]=i.customId.split(':');
+  const guild=client.guilds.cache.get(gid),id=Number(rawId);
+  if(!guild||!Number.isSafeInteger(id))throw new Error('Sagen findes ikke');
+  const task=await get(gid,id);
+  if(!task||task.user_id!==i.user.id||!await canReport(guild,i.user.id))return i.reply({content:'Sagen findes ikke, eller du mangler adgang til den.',flags:MessageFlags.Ephemeral});
+  if(action==='reply')return i.showModal(new ModalBuilder().setCustomId(`dev:replysubmit:${gid}:${id}`).setTitle(`Svar på sag #${id}`).addLabelComponents(new LabelBuilder().setLabel('Din besked til udvikleren').setTextInputComponent(new TextInputBuilder().setCustomId('reply').setStyle(TextInputStyle.Paragraph).setMaxLength(1800).setRequired(true))));
+  if(action==='replysubmit'&&i.isModalSubmit()){
+    await i.deferReply({flags:MessageFlags.Ephemeral});
+    await comment(guild,id,i.user.id,i.fields.getTextInputValue('reply'));
+    return i.editReply('Dit svar er gemt på sagen og sendt til udviklerpanelet.');
+  }
+}
+const parse = r => r && ({ ...r, status:r.status==='done'?'closed':r.status, checklist: JSON.parse(r.checklist || '[]'), attachments: JSON.parse(r.attachments || '[]') });
 async function canReport(guild,uid) {
   const config=(await settings.get(guild.id)).developer;
   if(!config.enabled) return false;
@@ -36,7 +50,7 @@ async function comment(guild,id,uid,text,asDeveloper=false) {
   if(asDeveloper && task.user_id!==uid) {
     try {
       const user=await guild.client.users.fetch(task.user_id);
-      await user.send({content:`💬 Svar på fejlmelding #${id}:\n${text.trim()}\n\nSvar på serveren med /fejlsvar id:${id} besked:dit svar`,allowedMentions:{parse:[]}});
+      await user.send({content:`💬 Svar på fejlmelding #${id}:\n${text.trim()}\n\nTryk Svar på sagen herunder for at svare udvikleren.`,components:replyComponents(task),allowedMentions:{parse:[]}});
     } catch { await db.prepare('UPDATE dev_tasks SET sync_error=? WHERE guild_id=? AND id=?').run('Svaret er gemt. Borgerens private beskeder kunne ikke modtage det; svaret kan læses med /fejlstatus.',guild.id,id); }
   }
   return get(guild.id,id);
@@ -86,7 +100,7 @@ function view(task) {
   if (task.attachments[0]) embed.setImage(task.attachments[0].url);
   const latest = (task.comments || []).slice(0,3).reverse();
   if(latest.length) embed.addFields({name:'Seneste beskeder',value:latest.map(c=>`${c.author_type==='developer'?'Udvikler':'Borger'}: ${c.body.slice(0,270)}`).join('\n\n').slice(0,1024)});
-  return { embeds: [embed], allowedMentions: { parse: [] } };
+  return { embeds: [embed], components:replyComponents(task), allowedMentions: { parse: [] } };
 }
 async function sync(client, task) {
   if (!task.channel_id || !task.message_id) return;
@@ -100,6 +114,7 @@ async function sync(client, task) {
   }
 }
 async function update(guild, id, input, uid) {
+  if(input.status==='done')input={...input,status:'closed'};
   validate(input);
   const previous = await get(guild.id, id);
   if (!previous) throw new Error('Sagen findes ikke');
@@ -168,4 +183,4 @@ async function remove(guild,id,uid) {
   await require('./developer-audit').record(guild.id,id,uid,'deleted',{title:task.title,status:task.status,notes:task.notes,checklist:task.checklist,description:task.description,planning:task.planning});
   await db.prepare('INSERT INTO dev_deleted (guild_id,task_id,user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(guild_id,task_id) DO NOTHING').run(guild.id,id,uid,Date.now());
 }
-module.exports = { STATUS, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction };
+module.exports = { STATUS, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction,onDirectReply,replyComponents };

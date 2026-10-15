@@ -20,7 +20,7 @@ async function api(path, opts = {}) {
   const r = await fetch(path, { method: opts.method || 'GET', headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
   if (r.status === 401) { location.href = '/login'; throw new Error('Log ind'); }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || `Fejl ${r.status}`);
+  if (!r.ok) {const error=new Error(j.error || `Fejl ${r.status}`);error.status=r.status;throw error;}
   return j;
 }
 function toast(msg, err) {
@@ -211,10 +211,12 @@ function panelCard(type, text) {
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Tickets'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['levels', '⭐', 'Levels'], ['giveaways', '🎉', 'Giveaways'], ['stream', '🔴', 'Stream-alerts'], ['custom', '💬', 'Custom commands'],
+  ['levels', '⭐', 'Levels'], ['giveaways', '🎉', 'Giveaways'], ['stream', '🔴', 'Stream-alerts'], ['custom', '💬', 'Custom commands'], ['appearance','🎨','Indstillinger for siden'], ['logs','≡','Logs'],
 ];
 
 const pages = {
+  async appearance(){return renderAppearance();},
+  async logs(){return renderSiteLogs();},
   async developer() { return renderDeveloperWorkspace(); },
   async overview() {
     const s = G.stats;
@@ -307,7 +309,7 @@ const pages = {
     await refreshFleet();
     refresh();
     pollTimer = setInterval(()=>{refresh();refreshFleet().catch(()=>{});},5000);
-    const q = h('input', { placeholder: 'Sangnavn eller link (SoundCloud, Spotify, …)' });
+    const q = h('input', { placeholder: 'Sangnavn, YouTube- eller Spotify-link' });
     const vc = h('select', {}, optionList(G.voiceChannels, '🔊 ', '— talekanal —'));
     const tc = h('select', {}, optionList(G.channels, '# ', '— annoncér i kanal (valgfri) —'));
     return [box,
@@ -360,7 +362,8 @@ const pages = {
       settingsCard('giveaways', 'Indstillinger')];
   },
 
-  async stream() {
+  async stream() { return renderStreamWorkspace(); },
+  async legacyStream() {
     return [settingsCard('stream', 'Twitch & YouTube notifikationer'),
       h('div', { class: 'card muted' }, 'Twitch kræver TWITCH_CLIENT_ID og TWITCH_CLIENT_SECRET i .env. YouTube virker uden nøgle – find kanal-ID’et (UC…) under "Del kanal → Kopiér kanal-ID". Der tjekkes hvert 2. minut.')];
   },
@@ -388,6 +391,7 @@ async function route() {
     if (!G || G.id !== gid) G = await api(`/api/guild/${gid}`);
   } catch (e) { toast(e.message, true); location.hash = ''; return; }
   if (G.developerOnly && page !== 'developer') { location.hash = '#/g/'+gid+'/developer'; return; }
+  applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
     PAGES.filter(p=>!G.developerOnly || p[0]==='developer').map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
@@ -398,7 +402,7 @@ async function route() {
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(page==='developer'?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','stream','appearance','logs'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
