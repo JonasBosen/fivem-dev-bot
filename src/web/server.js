@@ -24,7 +24,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   const owners = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
 
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '1mb' }));
+  app.use((req,res,next)=> /\/developer\/\d+\/files$/.test(req.path) ? next() : express.json({limit:'1mb'})(req,res,next));
   app.use(session({
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
     resave: false, saveUninitialized: false,
@@ -94,6 +94,12 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       req.guild = guild; next();
     } catch { res.status(503).json({error:'Adgang kunne ikke kontrolleres'}); }
   };
+  app.post('/api/guild/:gid/developer/:id/files',auth,devAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/developer-files').upload(req.guild.id,Number(req.params.id),req.session.user.id,req.body)));
+  app.get('/api/guild/:gid/developer/:id/files/:fid',auth,devAccess,wrap(async(req,res)=>{
+    const image=await db.prepare('SELECT mime,content FROM dev_files WHERE guild_id=? AND task_id=? AND id=?').get(req.guild.id,req.params.id,req.params.fid);
+    if(!image) return res.status(404).json({error:'Billedet findes ikke'});
+    res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, no-store').type(image.mime).send(Buffer.from(image.content,'base64'));
+  }));
   app.get('/api/guild/:gid/developer/:id/image',auth,devAccess,wrap(async (req,res)=>{
     const image=await db.prepare('SELECT mime,content FROM dev_images WHERE guild_id=? AND task_id=?').get(req.guild.id,req.params.id);
     if(!image) return res.status(404).json({error:'Billedet findes ikke'});
