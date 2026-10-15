@@ -80,10 +80,10 @@ client.on(Events.GuildMemberRemove, (m) => community.onLeave(m).catch(() => {}))
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
 async function start() {
-  let databaseReady = false;
+  let databaseReady = false, databaseError = ''; 
   try { await initDb(); databaseReady = true; }
-  catch (error) { console.error('[database] Opsætning mangler eller forbindelsen fejlede:', error.code || 'Tjek DATABASE_URL'); }
-  startWeb(client, { databaseReady });
+  catch (error) { databaseError = /^[A-Z0-9_]+$/.test(error.code || '') ? error.code : 'DATABASE_CONNECTION_FAILED'; console.error('[database]', databaseError); }
+  startWeb(client, { databaseReady, databaseError });
   if (databaseReady && process.env.DISCORD_TOKEN) await client.login(process.env.DISCORD_TOKEN);
   else console.log('[opsætning] Dashboard kører. Tilføj database og Discord-oplysninger under Environment.');
 }

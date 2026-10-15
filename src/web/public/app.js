@@ -439,7 +439,10 @@ async function route() {
       h('p', { class: 'muted' }, 'Dit online dashboard er klar. Forbind Supabase og Discord for at aktivere botten.'),
       h('p', {}, `Database: ${setup.databaseReady ? 'tilsluttet' : 'mangler forbindelse'}`),
       h('p', {}, `Discord-bot: ${setup.botReady ? 'online' : 'afventer opsætning'}`),
-      h('p', {}, 'I Render Environment: DATABASE_URL, DISCORD_TOKEN, DISCORD_CLIENT_ID og DISCORD_CLIENT_SECRET.'),
+      h('p', {}, 'Forbindelsen bruger SUPABASE_URL og SUPABASE_SERVICE_KEY på Render.'),
+      ...Object.entries({discordToken:'DISCORD_TOKEN',discordClientId:'DISCORD_CLIENT_ID',discordClientSecret:'DISCORD_CLIENT_SECRET',supabaseUrl:'SUPABASE_URL',supabaseKey:'SUPABASE_SERVICE_KEY'}).map(([key,label])=>h('p',{},label+': '+(setup.credentials?.[key]?'udfyldt':'mangler'))),
+      setup.databaseError && h('p',{},'Databasefejl: '+({'SUPABASE_HTTP_401':'Supabase-nøglen blev afvist. Kontrollér den kopierede nøgle.','SUPABASE_HTTP_403':'Nøglen mangler backendadgang. Brug service_role/secret-nøglen.','SUPABASE_HTTP_404':'Databasefunktionen kunne ikke findes.','SUPABASE_PROJECT_MISMATCH':'Supabase-adressen peger på et andet projekt.'}[setup.databaseError]||setup.databaseError)),
+      h('a',{class:'btn',href:'https://dashboard.render.com/web/srv-db8b651srm7s73e1rtq0/env',target:'_blank',rel:'noopener'},'Åbn indstillinger på Render'),
       h('p', {}, 'Discord OAuth2 Redirect: ', h('code', {}, setup.callbackUrl)))));
     return;
   }
