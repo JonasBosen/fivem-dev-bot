@@ -133,8 +133,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
   app.get('/api/guild/:gid/developer', auth, devAccess, wrap(async req => {
     const planning=await require('../modules/developer-planning').all(req.guild.id);
+    const readConfig=(await settings.get(req.guild.id)).developer;
     const replies=Object.fromEntries((await db.prepare("SELECT task_id,MAX(id) AS latest FROM dev_comments WHERE guild_id=? AND author_type='citizen' GROUP BY task_id").all(req.guild.id)).map(r=>[r.task_id,r.latest]));
-    return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t,status:t.status==='done'?'closed':t.status,latestCitizenReply:replies[t.id]||0, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})); }));
+    return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t,status:t.status==='done'?'closed':t.status,latestCitizenReply:replies[t.id]||0,unreadCitizenReply:require('../modules/developer-read-state').isUnread({id:t.id,latestCitizenReply:replies[t.id]||0},readConfig,req.session.user.id), checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})); }));
   app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').page(req.guild.id,req.query.before)));
   app.get('/api/guild/:gid/developer/panel-config',auth,devAccess,wrap(async req=>(await settings.get(req.guild.id)).developer.reportPanel||require('../modules/report-panel-config').defaults));
   app.put('/api/guild/:gid/developer/panel-config',auth,devAccess,wrap(async req=>{const reportPanel=require('../modules/report-panel-config').validate(req.body);const cfg=(await settings.get(req.guild.id)).developer;await settings.setModule(req.guild.id,'developer',{...cfg,reportPanel});await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:'reportPanel',settings:reportPanel});const updatedPanels=await require('../modules/report-panel').refreshPanels(req.guild.client,req.guild.id,cfg.reportPanel?.text);return {...reportPanel,updatedPanels};}));
@@ -145,6 +146,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(!task) throw new Error('Sagen findes ikke');
     return task;
   }));
+  app.post('/api/guild/:gid/developer/:id/conversation-read',auth,devAccess,wrap(req=>require('../modules/developer-read-state').mark(req.guild,req.session.user.id,Number(req.params.id),req.body.through)));
   app.post('/api/guild/:gid/developer/:id/comments',auth,devAccess,wrap(req=>developer.comment(req.guild,Number(req.params.id),req.session.user.id,req.body.text,true)));
   app.post('/api/guild/:gid/developer', auth, devAccess, wrap(req => developer.create(req.guild,req.session.user.id,req.body)));
   app.put('/api/guild/:gid/developer/:id', auth, devAccess, wrap(req => developer.update(req.guild, Number(req.params.id),req.body,req.session.user.id)));

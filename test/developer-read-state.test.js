@@ -1,0 +1,10 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');process.env.DB_FILE=':memory:';delete process.env.DATABASE_URL;
+const {initDb,db,settings}=require('../src/db'),developer=require('../src/modules/developer'),reads=require('../src/modules/developer-read-state');
+test('citizen messages stay unread per developer until acknowledged; newer replies and other guilds remain independent',async()=>{
+ await initDb();try{const guild={id:'reads-guild'};const task=await developer.create(guild,'citizen',{title:'Fejl',description:''});const first=await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,task.id,'citizen','citizen','Første svar',Date.now());let summary={id:task.id,latestCitizenReply:Number(first.lastInsertRowid)};let cfg=(await settings.get(guild.id)).developer;
+ assert.equal(reads.isUnread(summary,cfg,'dev-a'),true);await reads.mark(guild,'dev-a',task.id,summary.latestCitizenReply);cfg=(await settings.get(guild.id)).developer;assert.equal(reads.isUnread(summary,cfg,'dev-a'),false);assert.equal(reads.isUnread(summary,cfg,'dev-b'),true);
+ const second=await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,task.id,'citizen','citizen','Nyt svar',Date.now());summary.latestCitizenReply=Number(second.lastInsertRowid);assert.equal(reads.isUnread(summary,cfg,'dev-a'),true);await reads.mark(guild,'dev-a',task.id,Number(first.lastInsertRowid));assert.equal(reads.isUnread(summary,(await settings.get(guild.id)).developer,'dev-a'),true);
+ await assert.rejects(reads.mark(guild,'dev-a',task.id,summary.latestCitizenReply+1),/findes ikke/);await assert.rejects(reads.mark({id:'other'},'dev-a',task.id,summary.latestCitizenReply),/findes ikke/);
+ await reads.mark(guild,'dev-a',task.id,summary.latestCitizenReply);delete require.cache[require.resolve('../src/modules/developer-read-state')];assert.equal(require('../src/modules/developer-read-state').isUnread(summary,(await settings.get(guild.id)).developer,'dev-a'),false);
+ }finally{await db.close();}
+});

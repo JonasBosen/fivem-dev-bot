@@ -118,3 +118,5 @@ body{background-size:cover;background-position:center;background-attachment:fixe
 .work-ticket[class*=priority-]{background:color-mix(in srgb,var(--priority) 9%,var(--panel2))}.work-ticket.priority-normal{background:var(--panel2)}
 
 .nav-order-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 15px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;margin:8px 0;cursor:grab}.nav-order-list{max-width:800px}
+
+.conversation-unread{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:50%;background:#dc2626;color:#fff;font-size:12px;font-weight:800;line-height:1;margin-left:6px;flex-shrink:0;box-shadow:0 0 0 2px var(--panel)}
