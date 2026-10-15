@@ -1,9 +1,31 @@
 async function renderDeveloperWorkspace() {
   const base=`/api/guild/${G.id}/developer`;
+  const access=await api('/api/guild/'+G.id+'/developer-access');
+  const pin=h('input',{type:'password',inputmode:'numeric',pattern:'[0-9]{4}',maxlength:4,autocomplete:'off',placeholder:'••••','aria-label':'Firecifret kode'});
+  if(!access.unlocked){
+    const form=h('form',{class:'card developer-lock',onsubmit:run(async e=>{e.preventDefault();if(!/^\d{4}$/.test(pin.value))throw new Error('Skriv fire cifre');await api('/api/guild/'+G.id+'/developer-access/'+(access.configured?'unlock':'setup'),{method:'POST',body:{pin:pin.value}});pin.value='';await route();})},h('span',{class:'workspace-eyebrow'},'BESKYTTET ARBEJDSOMRÅDE'),h('h2',{},'Udviklerpanelet er låst'),h('p',{class:'muted'},access.configured?'Indtast den fælles firecifrede kode. Administratoradgang alene låser ikke panelet op.':'Serverejeren skal oprette den fælles firecifrede kode her. Den gemmes som en saltet hash.'),pin,h('button',{type:'submit',class:'btn',disabled:!access.configured&&!access.canSetup},access.configured?'Lås panelet op':'Opret kode og åbn'));
+    return [form];
+  }
   const reportCategories=await api('/report-categories.json');
   const reportLabel=p=>p?.reportCategory==='other'?p.reportCategoryCustom:reportCategories.find(c=>c.id===p?.reportCategory)?.label||'';
   let tasks=await api(base), selected=null, dirty=false, saving=false;
-  const states={todo:'Ikke taget',doing:'Taget · I gang',done:'Færdig',closed:'Afsluttet',rejected:'Afvist'};
+  const replySeen=new Map(tasks.map(t=>[t.id,t.latestCitizenReply||0])),unread=new Set();
+  let refreshConversation=null,polling=false,dragged=null,moving=false;
+  const archiveFilter=h('select',{onchange:()=>draw()},h('option',{value:'active'},'Aktive opgaver'),h('option',{value:'archived'},'Arkiverede opgaver'));
+  const rank=t=>t.planning?.position||-t.created_at;
+  async function move(id,state,beforeId){
+    if(moving||!canLeave())return;moving=true;
+    try{
+      const task=await api(`${base}/${id}`);
+      const lane=tasks.filter(t=>t.id!==id&&t.status===state&&!!t.planning?.archived===(archiveFilter.value==='archived')).sort((a,b)=>rank(a)-rank(b));
+      let index=beforeId?lane.findIndex(t=>t.id===beforeId):lane.length;if(index<0)index=lane.length;
+      const left=index>0?rank(lane[index-1]):(lane[index]?rank(lane[index])-2048:0);
+      const right=lane[index]?rank(lane[index]):left+2048;
+      await api(`${base}/${id}`,{method:'PUT',body:{...task,status:state,planning:{...task.planning,position:(left+right)/2}}});
+      if(selected===id){dirty=false;await open(id);}await refresh();toast('Opgaven er flyttet og gemt');
+    }finally{moving=false;dragged=null;}
+  }
+  const states={todo:'Ikke taget',doing:'Taget · I gang',closed:'Afsluttet',rejected:'Afvist'};
   const board=h('div',{class:'work-board'}), detail=h('section',{class:'card work-detail'},h('h2',{},'Dit arbejdsområde'),h('p',{class:'muted'},'Åbn en sag eller opret en opgave. Her kan du gemme noter, billeder og tjeklister.'));
   const search=h('input',{type:'search',placeholder:'Søg efter titel, beskrivelse eller sagsnummer',oninput:()=>draw()});
   const priorities={low:'Lav',normal:'Normal',high:'Høj',critical:'Kritisk'};
@@ -21,19 +43,19 @@ async function renderDeveloperWorkspace() {
   function draw(){
     const active=tasks.filter(t=>!['done','closed','rejected'].includes(t.status));
     const metric=(value,label,state)=>h('span',{class:'work-count status-'+state},value,h('small',{},label));
-    counts.replaceChildren(metric(tasks.filter(t=>t.status==='todo').length,'Ikke taget','todo'),metric(tasks.filter(t=>t.status==='doing').length,'Taget · I gang','doing'),metric(active.filter(t=>t.planning?.priority==='critical').length,'Kritiske åbne','critical'),metric(tasks.filter(t=>t.status==='done').length,'Færdig','done'),metric(tasks.reduce((n,t)=>n+(t.planning?.spentHours||0),0).toFixed(1)+' t','Registreret tid','todo'));
+    counts.replaceChildren(metric(tasks.filter(t=>t.status==='todo').length,'Ikke taget','todo'),metric(tasks.filter(t=>t.status==='doing').length,'Taget · I gang','doing'),metric(active.filter(t=>t.planning?.priority==='critical').length,'Kritiske åbne','critical'),metric(tasks.filter(t=>t.status==='closed').length,'Afsluttet','closed'),metric(tasks.reduce((n,t)=>n+(t.planning?.spentHours||0),0).toFixed(1)+' t','Registreret tid','todo'));
     const query=search.value.trim().toLowerCase();
     board.replaceChildren(...Object.entries(states).map(([state,label])=>{
-      const items=tasks.filter(t=>t.status===state&&(!priorityFilter.value||t.planning?.priority===priorityFilter.value)&&(!typeFilter.value||t.planning?.kind===typeFilter.value)&&(!categoryFilter.value||t.planning?.reportCategory===categoryFilter.value)&&`${t.id} ${t.title} ${t.description} ${t.planning?.resource||''} ${t.planning?.assignee||''} ${reportLabel(t.planning)}`.toLowerCase().includes(query));
-      return h('section',{class:`work-lane status-${state}`},h('h3',{},h('span',{class:'work-dot'}),label,h('span',{class:'work-total'},items.length)),
-        ...(items.length?items.map(t=>h('button',{class:`work-ticket status-${state}${selected===t.id?' selected':''}`,onclick:run(async()=>{if(canLeave())await open(t.id);})},
+      const items=tasks.filter(t=>!!t.planning?.archived===(archiveFilter.value==='archived')&&t.status===state&&(!priorityFilter.value||t.planning?.priority===priorityFilter.value)&&(!typeFilter.value||t.planning?.kind===typeFilter.value)&&(!categoryFilter.value||t.planning?.reportCategory===categoryFilter.value)&&`${t.id} ${t.title} ${t.description} ${t.planning?.resource||''} ${t.planning?.assignee||''} ${reportLabel(t.planning)}`.toLowerCase().includes(query)).sort((a,b)=>rank(a)-rank(b));
+      return h('section',{class:`work-lane status-${state}`,ondragover:e=>{e.preventDefault();e.dataTransfer.dropEffect='move';},ondrop:run(async e=>{e.preventDefault();if(dragged)await move(dragged,state);})},h('h3',{},h('span',{class:'work-dot'}),label,h('span',{class:'work-total'},items.length)),
+        ...(items.length?items.map(t=>h('button',{draggable:'true',ondragstart:e=>{dragged=t.id;e.dataTransfer.setData('text/plain',String(t.id));e.dataTransfer.effectAllowed='move';},ondragend:()=>{dragged=null;},ondragover:e=>{e.preventDefault();e.stopPropagation();},ondrop:run(async e=>{e.preventDefault();e.stopPropagation();if(dragged&&dragged!==t.id)await move(dragged,state,t.id);}),class:`work-ticket status-${state}${selected===t.id?' selected':''}${unread.has(t.id)?' has-unread':''}`,onclick:run(async()=>{if(canLeave())await open(t.id);})},
           h('div',{class:'work-ticket-top'},h('span',{},`#${t.id}`),h('span',{'aria-label':states[state]},['done','closed'].includes(state)?'☑':state==='doing'?'◩':'☐')),
-          h('b',{},t.title),h('small',{class:'work-planning-badges'},[reportLabel(t.planning),priorities[t.planning?.priority]||'Normal',t.planning?.resource,t.planning?.assignee,t.planning?.deadline?'Frist: '+t.planning.deadline:''].filter(Boolean).join(' · ')),h('p',{},t.description.slice(0,110)),h('div',{class:'work-ticket-bottom'},`${t.checklist.filter(c=>c.done).length}/${t.checklist.length} punkter`,h('small',{},date(t.updated_at))))) : [h('p',{class:'muted'},'Ingen opgaver her')]) );
+          h('b',{},t.title),unread.has(t.id)&&h('span',{class:'reply-badge'},'Nyt svar fra borger'),h('small',{class:'work-planning-badges'},[reportLabel(t.planning),priorities[t.planning?.priority]||'Normal',t.planning?.resource,t.planning?.assignee,t.planning?.deadline?'Frist: '+t.planning.deadline:''].filter(Boolean).join(' · ')),h('p',{},t.description.slice(0,110)),h('div',{class:'work-ticket-bottom'},`${t.checklist.filter(c=>c.done).length}/${t.checklist.length} punkter`,h('small',{},date(t.updated_at))))) : [h('p',{class:'muted'},'Ingen opgaver her')]) );
     }));
   }
   async function refresh(){tasks=await api(base);draw();}
   async function open(id){
-    const task=await api(`${base}/${id}`);selected=id;dirty=false;
+    const task=await api(`${base}/${id}`);selected=id;dirty=false;unread.delete(id);
     const draft=structuredClone(task), banner=h('div',{class:`work-state status-${draft.status}`});
     saveInfo.textContent='Gemt · '+date(task.updated_at);saveInfo.className='muted';
     draft.planning ||= {};
@@ -62,10 +84,10 @@ async function renderDeveloperWorkspace() {
       }finally{saving=false;}
     }
     const taken=h('input',{type:'checkbox',onchange:()=>{draft.status=taken.checked?'doing':'todo';setDirty();drawState();}});
-    const done=h('input',{type:'checkbox',onchange:()=>{draft.status=done.checked?'done':'doing';setDirty();drawState();}});
+    const done=h('input',{type:'checkbox',onchange:()=>{draft.status=done.checked?'closed':'doing';setDirty();drawState();}});
     function drawState(){taken.checked=['doing','done','closed'].includes(draft.status);done.checked=['done','closed'].includes(draft.status);banner.className=`work-state status-${draft.status}`;banner.replaceChildren(h('span',{class:'work-dot'}),states[draft.status]);}
     drawState();
-    const actions=h('div',{class:'actions'},...['todo','doing','done','closed','rejected'].map(s=>h('button',{class:`btn sec status-${s}`,onclick:run(async()=>{draft.status=s;setDirty();drawState();await save();})},{todo:'Sæt som ikke taget',doing:'Tag opgaven',done:'Markér færdig',closed:'Afslut sag',rejected:'Afvis sag'}[s])));
+    const actions=h('div',{class:'actions'},...['todo','doing','closed','rejected'].map(s=>h('button',{class:`btn sec status-${s}`,onclick:run(async()=>{draft.status=s;setDirty();drawState();await save();})},{todo:'Sæt som ikke taget',doing:'Tag opgaven',closed:'Afslut sag',rejected:'Afvis sag'}[s])));
     const checklist=h('div'),progress=h('p',{class:'muted'});
     function drawChecks(){
       progress.textContent=`${draft.checklist.filter(c=>c.done).length} af ${draft.checklist.length} punkter udført`;
@@ -92,6 +114,7 @@ async function renderDeveloperWorkspace() {
     const conversation=h('div',{class:'work-conversation'});
     function drawComments(list){conversation.replaceChildren(...list.slice().reverse().map(c=>h('article',{class:`work-comment ${c.author_type}`},h('b',{},c.author_type==='developer'?'Udvikler':'Borger'),h('small',{},' · '+date(c.created_at)),h('p',{},c.body))));}
     drawComments(task.comments||[]);
+    refreshConversation=async()=>{const latest=await api(`${base}/${id}`);drawComments(latest.comments||[]);unread.delete(id);};
     const reply=h('textarea',{maxlength:1800,placeholder:'Skriv en besked til borgeren. Denne tekst bliver sendt til Discord.'});
     const tabs=h('div',{class:'work-tabs'}),content=h('div');
     const panels={
@@ -103,7 +126,8 @@ async function renderDeveloperWorkspace() {
     function tab(key){content.replaceChildren(panels[key]);[...tabs.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===key));}
     for(const [key,label]of Object.entries({work:'Noter & tjekliste',planning:'FiveM & planlægning',images:'Billeder',conversation:'Samtale'}))tabs.append(h('button',{class:'btn sec','data-tab':key,onclick:()=>tab(key)},label));
     const deleteButton=h('button',{class:'btn bad',onclick:run(async()=>{if(!window.confirm('Slet sagen fra tavlen? Historik og dokumentation bevares i loggen.'))return;await api(`${base}/${id}`,{method:'DELETE',body:{}});dirty=false;selected=null;detail.replaceChildren(h('p',{},'Sagen er slettet fra tavlen. Historikken er bevaret i loggen.'));await refresh();toast('Sagen er slettet og logget');})},'Slet sag');
-    detail.replaceChildren(h('div',{class:'top'},h('h2',{},`Opgave #${id}`),banner),deleteButton,h('p',{class:'muted'},'Oprettet '+date(task.created_at)+' · Sagens alder: '+Math.max(0,Math.floor((Date.now()-task.created_at)/3600000))+' timer · Forventet: '+(task.planning?.estimateHours||0)+' t · Registreret: '+(task.planning?.spentHours||0)+' t'),actions,h('div',{class:'work-checkboxes'},h('label',{},taken,' Opgaven er taget'),h('label',{},done,' Opgaven er færdig')),tabs,content,h('div',{class:'work-save'},h('button',{class:'btn',onclick:run(save)},'Gem opgave, noter og tjekliste'),saveInfo));
+    const archiveButton=h('button',{class:'btn sec',onclick:run(async()=>{draft.planning.archived=!draft.planning.archived;setDirty();await save();toast(draft.planning.archived?'Opgaven er arkiveret':'Opgaven er genåbnet på tavlen');await open(id);})},draft.planning.archived?'Gendan fra arkiv':'Arkivér opgave');
+    detail.replaceChildren(h('div',{class:'top'},h('h2',{},`Opgave #${id}`),banner),h('div',{class:'actions'},archiveButton,deleteButton),h('p',{class:'muted'},'Oprettet '+date(task.created_at)+' · Sagens alder: '+Math.max(0,Math.floor((Date.now()-task.created_at)/3600000))+' timer · Forventet: '+(task.planning?.estimateHours||0)+' t · Registreret: '+(task.planning?.spentHours||0)+' t'),actions,h('div',{class:'work-checkboxes'},h('label',{},taken,' Opgaven er taget'),h('label',{},done,' Sagen er afsluttet')),tabs,content,h('div',{class:'work-save'},h('button',{class:'btn',onclick:run(save)},'Gem opgave, noter og tjekliste'),saveInfo));
     tab('work');draw();detail.scrollIntoView({behavior:'smooth',block:'start'});
   }
   const newTask={title:'',description:''};
@@ -128,12 +152,22 @@ async function renderDeveloperWorkspace() {
   const log=h('div',{class:'card audit-workspace'},h('span',{class:'workspace-eyebrow'},'HISTORIK & DOKUMENTATION'),h('h2',{},'Udviklerens aktivitetslog'),h('p',{class:'muted'},'Oprettelser, noter, tjeklister, tid, status, billeder og sletninger gemmes i databasen. Sletning af en sag fjerner ikke dens historik. Hent ældre hændelser for at se længere tilbage.'),h('button',{class:'btn sec',onclick:run(()=>loadLogs(true))},'Opdatér log'),logCount,logBody,older);
   const panelChannel=h('select',{},...optionList(G.channels,'# ','Vælg Discord-kanal'));
   const discord=h('div',{class:'card'},h('span',{class:'workspace-eyebrow'},'DISCORD & OPSÆTNING'),h('h2',{},'Fejlmeldingspanel til borgerne'),h('p',{class:'muted'},'Vælg en kanal og send panelet. Borgeren kan indsende titel, beskrivelse og billede. Sagen lander på FiveM-arbejdstavlen.'),panelChannel,h('div',{class:'actions'},h('button',{class:'btn',onclick:run(async()=>{if(!panelChannel.value)throw new Error('Vælg en kanal');await api(base+'/panel',{method:'POST',body:{channel:panelChannel.value}});toast('Fejlmeldingspanelet er sendt til Discord');})},'Send panel til Discord')),h('p',{class:'muted'},'Borgerkommandoer: /fejl · /fejlstatus · /fejlsvar · /fejlbillede. Interne noter, planlægning og logs er kun til udviklere og administratorer.'));
-  const header=h('div',{class:'card work-header workspace-hero'},h('div',{},h('span',{class:'workspace-eyebrow'},'FIVEM · UDVIKLINGSCENTER'),h('h2',{},'Fra fejlmelding til færdig release'),h('p',{class:'muted'},'Én arbejdsplads til planlægning, dokumentation og borgersager.')),counts);
-  const tools=h('div',{class:'work-tools'},search,priorityFilter,typeFilter,categoryFilter,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager'));
+  const lockButton=h('button',{class:'btn sec',onclick:run(async()=>{if(!canLeave())return;dirty=false;await api('/api/guild/'+G.id+'/developer-access/lock',{method:'POST',body:{}});await route();})},'Lås udviklerpanelet');
+  const changePin=h('details',{class:'card'},h('summary',{},'Skift adgangskode (serverejeren)'),h('p',{class:'muted'},'Andre brugere bliver låst ude, når koden ændres.'),pin,h('button',{class:'btn',onclick:run(async()=>{await api('/api/guild/'+G.id+'/developer-access/change',{method:'POST',body:{pin:pin.value}});pin.value='';toast('Adgangskoden er ændret');})},'Gem ny firecifret kode'));
+  const header=h('div',{class:'card work-header workspace-hero'},h('div',{},h('span',{class:'workspace-eyebrow'},'FIVEM · UDVIKLINGSCENTER'),h('h2',{},'Fra fejlmelding til færdig release'),h('p',{class:'muted'},'Én arbejdsplads til planlægning, dokumentation og borgersager.')),counts,lockButton);
+  const tools=h('div',{class:'work-tools'},search,priorityFilter,typeFilter,categoryFilter,archiveFilter,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager'));
+  pollTimer=setInterval(async()=>{
+    if(polling)return;polling=true;
+    try{
+      const latest=await api(base);
+      for(const task of latest){const previous=replySeen.get(task.id)||0;if(task.latestCitizenReply>previous){unread.add(task.id);toast('Nyt svar fra borger på sag #'+task.id);if(task.id===selected&&refreshConversation)await refreshConversation();}replySeen.set(task.id,task.latestCitizenReply||0);}
+      tasks=latest;draw();
+    }catch(e){if(e.status===423){dirty=false;clearInterval(pollTimer);await route();}}finally{polling=false;}
+  },7000);
   draw();
   return [header,dashboardTabs([
-    {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:[discord,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
-    {id:'board',icon:'▦',label:'FiveM-arbejdstavle',content:[tools,newCard,board,detail]},
+    {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:[discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
+    {id:'board',icon:'▦',label:'FiveM-arbejdstavle',content:[h('p',{class:'muted'},'Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,newCard,board,detail]},
     {id:'logs',icon:'≡',label:'Aktivitetslog',content:[log],onOpen:()=>{if(!logLoaded)loadLogs(true).catch(e=>toast(e.message,true));}}
   ],G.id+'-developer','board')];
 }

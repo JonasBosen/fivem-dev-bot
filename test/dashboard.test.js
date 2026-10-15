@@ -38,6 +38,10 @@ test('shared dashboard admits developers but protects administrator APIs and rej
     assert.equal((await fetch(base+'/api/guild/guild-a/tickets',{headers})).status,403);
     assert.equal((await fetch(base+'/api/guild/guild-b/developer',{headers})).status,403);
     assert.equal((await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:'https://evil.example','Content-Type':'application/json'},body:'{}'})).status,403);
+    assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,423);
+    assert.equal((await fetch(base+'/api/guild/guild-a/developer-access/setup',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({pin:'6428'})})).status,400);
+    guild.ownerId='developer-user';
+    assert.equal((await fetch(base+'/api/guild/guild-a/developer-access/setup',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({pin:'6428'})})).status,200);
     const created=await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({title:'Test task',description:'Description'})});
     assert.equal(created.status,200);
     const task=await created.json();

@@ -14,6 +14,9 @@ const community = require('../modules/community');
 const music = require('../modules/music-fleet');
 const { parseDuration } = require('../util');
 
+const gate=require('../modules/developer-gate');
+const audit=require('../modules/site-audit');
+const stream=require('../modules/stream-platforms');
 const {isManager}=require('../access');
 const API = 'https://discord.com/api/v10';
 
@@ -78,8 +81,17 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     } catch { res.status(503).json({ error: 'Adgang kunne ikke kontrolleres' }); }
   };
   const wrap = (fn) => async (req, res) => {
-    try { const out = await fn(req, res); if (!res.headersSent) res.json(out ?? { ok: true }); }
-    catch (e) { res.status(400).json({ error: e.message }); }
+    try { const out = await fn(req, res); if (!res.headersSent) {
+      if(req.session?.user&&req.params.gid&&!['GET','HEAD'].includes(req.method)&&!req.path.endsWith('/audit/interaction')){
+        const bits=req.path.split('/');let module=bits[4];if(module==='developer-access')module='developer';if(module==='warnings')module='moderation';if(module==='settings'||module==='panel')module=bits[5];
+        await audit.record(req.params.gid,req.session.user.id,module,req.method+' '+req.path,{before:req.auditBefore,request:req.body,result:'success'});
+      }
+      res.json(out ?? { ok: true });
+    } }
+    catch (e) {
+      if(req.session?.user&&req.params.gid&&!['GET','HEAD'].includes(req.method)){const parts=req.path.split('/');const mod=parts[4]==='settings'?parts[5]:parts[4]==='developer-access'?'developer':parts[4];await audit.record(req.params.gid,req.session.user.id,mod,'request_failed',{path:req.path,error:e.message}).catch(()=>{});}
+      if(!res.headersSent)res.status(400).json({ error: e.message });
+    }
   };
 
   // Same-origin protection for browser mutations (sessions use SameSite=Lax).
@@ -87,13 +99,27 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.get('origin') !== BASE) return res.status(403).json({ error: 'Ugyldig oprindelse' });
     next();
   });
-  const devAccess = async (req,res,next) => {
+  const devRoleAccess = async (req,res,next) => {
     try {
       const guild = client.guilds.cache.get(req.params.gid);
       if (!guild || !await developer.canManage(guild, req.session.user.id)) return res.status(403).json({error:'Kræver udviklerrolle eller administrator'});
       req.guild = guild; next();
     } catch { res.status(503).json({error:'Adgang kunne ikke kontrolleres'}); }
   };
+  const devAccess=async(req,res,next)=>devRoleAccess(req,res,async()=>{
+    try{if(!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Udviklerpanelet er låst. Indtast den firecifrede kode.'});next();}
+    catch{res.status(503).json({error:'Adgangskoden kunne ikke kontrolleres'});}
+  });
+  app.get('/api/guild/:gid/developer-access',auth,devRoleAccess,wrap(req=>gate.status(req.guild,req.session)));
+  app.post('/api/guild/:gid/developer-access/:action',auth,devRoleAccess,wrap(async req=>{
+    switch(req.params.action){
+      case 'setup':return gate.setup(req.guild,req.session,req.body.pin);
+      case 'unlock':return gate.unlock(req.guild,req.session,req.body.pin,req.ip);
+      case 'change':return gate.change(req.guild,req.session,req.body.pin);
+      case 'lock':if(req.session.devGate)delete req.session.devGate[req.guild.id];await audit.record(req.guild.id,req.session.user.id,'developer','panel_locked');return {ok:true};
+      default:throw new Error('Ukendt adgangshandling');
+    }
+  }));
   app.post('/api/guild/:gid/developer/:id/files',auth,devAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/developer-files').upload(req.guild.id,Number(req.params.id),req.session.user.id,req.body)));
   app.get('/api/guild/:gid/developer/:id/files/:fid',auth,devAccess,wrap(async(req,res)=>{
     const image=await db.prepare('SELECT mime,content FROM dev_files WHERE guild_id=? AND task_id=? AND id=?').get(req.guild.id,req.params.id,req.params.fid);
@@ -107,7 +133,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
   app.get('/api/guild/:gid/developer', auth, devAccess, wrap(async req => {
     const planning=await require('../modules/developer-planning').all(req.guild.id);
-    return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})); }));
+    const replies=Object.fromEntries((await db.prepare("SELECT task_id,MAX(id) AS latest FROM dev_comments WHERE guild_id=? AND author_type='citizen' GROUP BY task_id").all(req.guild.id)).map(r=>[r.task_id,r.latest]));
+    return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t,status:t.status==='done'?'closed':t.status,latestCitizenReply:replies[t.id]||0, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})); }));
   app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').page(req.guild.id,req.query.before)));
   app.post('/api/guild/:gid/developer/panel',auth,devAccess,wrap(async req=>{await developer.sendPanel(req.guild,req.body.channel);await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'panel_sent',{channel:req.body.channel});}));
   app.delete('/api/guild/:gid/developer/:id',auth,devAccess,wrap(req=>developer.remove(req.guild,Number(req.params.id),req.session.user.id)));
@@ -157,10 +184,10 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     });
   });
 
-  app.get('/api/guild/:gid', auth, devAccess, wrap(async (req) => {
+  app.get('/api/guild/:gid', auth, devRoleAccess, wrap(async (req) => {
     const g = req.guild;
     if (!await isManager(g,req.session.user.id)) {
-      return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{},stats:{}};
+      return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{appearance:(await settings.get(g.id)).appearance},stats:{}};
     }
     const channels = [...g.channels.cache.values()].sort((a, b) => a.rawPosition - b.rawPosition);
     return {
@@ -182,19 +209,42 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     };
   }));
 
-  app.put('/api/guild/:gid/settings/:module', auth, guildAccess, wrap(async (req) => {
+  const protectDeveloperSettings=async(req,res,next)=>{
+    if(!['/settings/developer','/panel/developer'].some(s=>req.path.endsWith(s)))return next();
+    if(!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});next();
+  };
+  app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
+    if(req.params.module==='appearance')req.body=require('../modules/appearance').validate(req.body);
+    if(req.params.module==='stream')req.body=stream.validateConfig(req.body);
     if (!Object.hasOwn(DEFAULTS, req.params.module)) throw new Error('Ukendt modul');
+    req.auditBefore=(await settings.get(req.guild.id))[req.params.module];
     const result=await settings.setModule(req.guild.id,req.params.module,req.body);
     if(['developer','general'].includes(req.params.module))await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:req.params.module,settings:req.body});
     return result[req.params.module];
   }));
 
-  app.post('/api/guild/:gid/panel/:type', auth, guildAccess, wrap(async (req) => {
+  app.post('/api/guild/:gid/panel/:type', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
     const fn = { developer: developer.sendPanel, tickets: tickets.sendPanel, applications: applications.sendPanel, verification: community.sendVerifyPanel }[req.params.type];
     if (!fn) throw new Error('Ukendt panel');
     await fn(req.guild, req.body.channel);
   }));
 
+  app.get('/api/guild/:gid/audit/:module',auth,guildAccess,wrap(async(req,res)=>{if(req.params.module==='developer'&&!(await gate.status(req.guild,req.session)).unlocked)return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});return audit.page(req.guild.id,req.params.module,req.query.before);}));
+  app.post('/api/guild/:gid/audit/interaction',auth,devRoleAccess,wrap(async req=>{
+    const {module,action}=req.body||{};
+    if(!audit.modules.includes(module)||typeof action!=='string'||action.length>100)throw new Error('Ugyldig hændelse');
+    if(!await isManager(req.guild,req.session.user.id)&&module!=='developer')throw new Error('Ingen adgang');
+    await audit.record(req.guild.id,req.session.user.id,module,'navigation',{action});
+  }));
+  app.get('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.accounts(req.guild.id)));
+  app.get('/api/guild/:gid/stream/status',auth,guildAccess,wrap(()=>stream.integrationStatus()));
+  app.get('/api/guild/:gid/stream/members',auth,guildAccess,wrap(async req=>{
+    const role=String(req.query.role||'');if(!req.guild.roles.cache.has(role))throw new Error('Vælg en streamerrolle');
+    const members=await req.guild.members.fetch();
+    return [...members.values()].filter(m=>!m.user.bot&&m.roles.cache.has(role)).slice(0,500).map(m=>({id:m.id,name:m.displayName}));
+  }));
+  app.post('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.link(req.guild,req.body.platform,req.body.userId,req.body.handle,req.session.user.id)));
+  app.delete('/api/guild/:gid/stream/accounts/:platform/:uid',auth,guildAccess,wrap(req=>stream.unlink(req.guild,req.params.platform,req.params.uid,req.session.user.id)));
   // Tickets
   const userName = async (id) => (id ? (await client.users.fetch(id).catch(() => null))?.username || id : null);
   app.get('/api/guild/:gid/tickets', auth, guildAccess, wrap(async (req) => {

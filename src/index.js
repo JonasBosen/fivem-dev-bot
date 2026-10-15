@@ -11,7 +11,7 @@ const community = require('./modules/community');
 const moderation = require('./modules/moderation');
 const music = require('./modules/music');
 const musicFleet=require('./modules/music-fleet');
-const stream = require('./modules/stream');
+const stream = require('./modules/stream-platforms');
 const { startWeb } = require('./web/server');
 const { initDb } = require('./db');
 
@@ -26,10 +26,11 @@ const client = new Client({
 });
 
 const commandRoutes = {
+  stream,
   fejlbillede: developer, fejlsvar: developer, fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
   rank: community, leaderboard: community,
   ticket: tickets, application: applications, giveaway: giveaways,
-  play: musicFleet, skip: musicFleet, pause: musicFleet, resume: musicFleet, stop: musicFleet, shuffle: musicFleet, queue: musicFleet, nowplaying: musicFleet, volume: musicFleet, loop: musicFleet,
+  play: musicFleet, next: musicFleet, skip: musicFleet, pause: musicFleet, resume: musicFleet, stop: musicFleet, shuffle: musicFleet, queue: musicFleet, nowplaying: musicFleet, volume: musicFleet, loop: musicFleet,
 };
 
 client.once(Events.ClientReady, async (c) => {
@@ -42,8 +43,9 @@ client.once(Events.ClientReady, async (c) => {
 });
 
 client.on(Events.InteractionCreate, async (i) => {
-  if (!i.inGuild()) return;
   try {
+    if(/^dev:(reply|replysubmit):/.test(i.customId||''))return await developer.onDirectReply(i,client);
+    if(!i.inGuild())return;
     if (i.isChatInputCommand()) {
       if (i.commandName === 'dashboard') return i.reply({ content: `🔧 Kontrolpanel: ${process.env.BASE_URL || 'http://localhost:3000'}`, flags: MessageFlags.Ephemeral });
       if (i.commandName === 'verify-panel') {
@@ -70,6 +72,7 @@ client.on(Events.MessageCreate, async (m) => {
   if (!m.guild || m.author.bot) return;
   try {
     if (await moderation.automod(m)) return;
+    if (await musicFleet.onMessage(m)) return;
     if (await community.customCommand(m)) return;
     await community.giveXp(m);
   } catch (e) { console.warn('[besked]', e.message); }

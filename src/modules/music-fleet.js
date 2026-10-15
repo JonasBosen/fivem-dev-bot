@@ -54,4 +54,26 @@ async function onCommand(i){
   // Reuse the selected service's command handler with the same voice channel and settings.
   return bot.worker.service.onCommand(i);
 }
-module.exports={choose,init,list,play,state,control,onCommand};
+
+function parseMessage(content,prefix='!'){
+  if(!prefix||!content.startsWith(prefix))return null;
+  const [command,...rest]=content.slice(prefix.length).trim().split(/\s+/);
+  if(!['play','next','skip','stop','pause','resume','queue','volume','shuffle','nowplaying','loop'].includes(command.toLowerCase()))return null;
+  return {name:command.toLowerCase(),query:rest.join(' ')};
+}
+async function onMessage(message){
+  const cfg=await settings.get(message.guild.id),parsed=parseMessage(message.content,cfg.general.prefix);
+  if(!parsed)return false;
+  try{
+    if(parsed.name==='play'&&!parsed.query)throw new Error('Skriv play efterfulgt af et sangnavn eller et YouTube-/Spotify-link.');
+    if(parsed.name==='volume'&&(!/^\d+$/.test(parsed.query)||Number(parsed.query)>150))throw new Error('Lydstyrke skal være 0–150, fx !volume 60.');
+    if(parsed.name==='loop'&&!['off','track','queue','autoplay'].includes(parsed.query))throw new Error('Brug loop off, track, queue eller autoplay.');
+    const reply=payload=>message.reply(typeof payload==='string'?{content:payload,allowedMentions:{parse:[]}}:{...payload,flags:undefined,allowedMentions:{parse:[]}});
+    const adapter={guild:message.guild,guildId:message.guild.id,member:message.member,user:message.author,channel:message.channel,channelId:message.channel.id,commandName:parsed.name,deferred:false,
+      options:{getString:()=>parsed.query,getInteger:()=>Number(parsed.query)},reply,
+      deferReply:async()=>{adapter.deferred=true;await message.channel.sendTyping();},editReply:reply};
+    await onCommand(adapter);
+  }catch(error){await message.reply({content:'⚠️ '+error.message,allowedMentions:{parse:[]}});}
+  return true;
+}
+module.exports={choose,init,list,play,state,control,onCommand,onMessage,parseMessage};

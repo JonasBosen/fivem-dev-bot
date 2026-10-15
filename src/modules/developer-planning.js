@@ -1,8 +1,10 @@
 const {db}=require('../db');
-const defaults={reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
+const defaults={position:0,archived:false,reportPriority:'',reportPriorityCustom:'',reportCategory:'',reportCategoryCustom:'',kind:'bug',priority:'normal',assignee:'',resource:'',environment:'test',deadline:'',estimateHours:0,spentHours:0,coordinates:'',reproduction:'',expected:'',actual:'',testPlan:'',release:'',commitUrl:''};
 function validate(input={}) {
   const out={...defaults};
   for(const key of Object.keys(defaults))if(input[key]!==undefined)out[key]=input[key];
+  if(typeof out.position!=='number'||!Number.isFinite(out.position)||Math.abs(out.position)>1e15)throw new Error('Ugyldig placering');
+  if(typeof out.archived!=='boolean')throw new Error('Ugyldigt arkivvalg');
   if(!['bug','feature','optimization','mapping','vehicle','ui','maintenance'].includes(out.kind))throw new Error('Ukendt opgavetype');
   if(!['low','normal','high','critical'].includes(out.priority))throw new Error('Ukendt prioritet');
   if(!['test','live','local'].includes(out.environment))throw new Error('Ukendt servermiljø');

@@ -1,6 +1,6 @@
 // Musik (inspireret af Jockie Music): play/kø/skip/pause/loop/shuffle/lydstyrke + styring fra dashboardet.
 // Kilder: SoundCloud, Spotify, Apple Music, Vimeo, filer m.m. via @discord-player/extractor.
-// YouTube kan tilføjes med pakken "discord-player-youtubei" (se README).
+// YouTube via discord-player-youtubei; Spotify-metadata bridges til en understøttet lydkilde.
 const { Player, QueueRepeatMode } = require('discord-player');
 const { DefaultExtractors } = require('@discord-player/extractor');
 const { MessageFlags } = require('discord.js');
@@ -14,11 +14,11 @@ let player;
 async function init(client) {
   player = new Player(client);
   await player.extractors.loadMulti(DefaultExtractors);
-  try { // Valgfri YouTube-understøttelse
-    const { YoutubeiExtractor } = require('discord-player-youtubei');
-    await player.extractors.register(YoutubeiExtractor, {});
+  try { // YouTube-understøttelse
+    const { YoutubeExtractor } = require('discord-player-youtubei');
+    await player.extractors.register(YoutubeExtractor, {});
     console.log('[musik] YouTube aktiveret');
-  } catch { /* pakken er ikke installeret */ }
+  } catch (e) { console.warn('[musik] YouTube kunne ikke startes:',e.message); }
 
   player.events.on('playerStart', async (queue, track) => {
     const cfg = (await settings.get(queue.guild.id)).music;
@@ -104,7 +104,7 @@ async function onCommand(interaction) {
       const { track, playlist } = await play(interaction.guild, vc, interaction.options.getString('sang'), interaction.channel, interaction.user);
       return interaction.editReply({ embeds: [embed('➕ Tilføjet', playlist ? `Playliste **${playlist.title}** (${playlist.tracks.length} sange)` : `[${track.title}](${track.url}) · ${track.duration}`)] });
     }
-    const map = { skip: 'skip', pause: 'pause', resume: 'resume', stop: 'stop', shuffle: 'shuffle' };
+    const map = { next:'skip', skip: 'skip', pause: 'pause', resume: 'resume', stop: 'stop', shuffle: 'shuffle' };
     if (map[name]) { control(interaction.guild.id, map[name]); return interaction.reply(`✅ ${name}`); }
     if (name === 'volume') { control(interaction.guild.id, 'volume', interaction.options.getInteger('procent')); return interaction.reply(`🔊 Lydstyrke: ${interaction.options.getInteger('procent')}%`); }
     if (name === 'loop') { control(interaction.guild.id, 'loop', interaction.options.getString('tilstand')); return interaction.reply(`🔁 Loop: ${interaction.options.getString('tilstand')}`); }

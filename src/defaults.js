@@ -1,6 +1,7 @@
 // Standard-indstillinger for en ny server. Alt kan ændres i dashboardet.
 // Pladsholdere i beskeder: {user} {username} {server} {count} {level}
 const DEFAULTS = {
+  appearance: require('./modules/appearance').defaults,
   developer: { enabled: false, roles: [], reporterRoles: [] },
   general: {
     adminRoles: [],
@@ -82,6 +83,7 @@ const DEFAULTS = {
     announceSongs: true,
   },
   stream: {
+    platforms: Object.fromEntries(['twitch','youtube','kick','tiktok'].map(p=>[p,{enabled:false,channel:'',streamerRole:'',pingRole:'',deleteWhenOffline:true,message:'🔴 **{name}** er live!\n**{title}**\n{url}'}])),
     channel: '',
     pingRole: '',
     twitchMessage: '🔴 **{name}** er live på Twitch!\n**{title}**\n{url}',
