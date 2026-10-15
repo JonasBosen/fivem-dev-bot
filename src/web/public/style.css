@@ -116,3 +116,5 @@ body{background-size:cover;background-position:center;background-attachment:fixe
 .priority-low{--priority:#22c55e}.priority-high{--priority:#f59e0b}.priority-critical{--priority:#ef4444}.work-ticket[class*=priority-]{border-right:4px solid var(--priority)}.priority-badge{color:var(--priority);font-weight:700;display:block;margin:6px 0}.work-ticket.priority-low{box-shadow:inset -12px 0 30px #22c55e08}.work-ticket.priority-high{box-shadow:inset -12px 0 30px #f59e0b08}.work-ticket.priority-critical{box-shadow:inset -12px 0 30px #ef444408}
 
 .work-ticket[class*=priority-]{background:color-mix(in srgb,var(--priority) 9%,var(--panel2))}.work-ticket.priority-normal{background:var(--panel2)}
+
+.nav-order-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 15px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;margin:8px 0;cursor:grab}.nav-order-list{max-width:800px}

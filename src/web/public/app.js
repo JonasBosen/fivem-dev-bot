@@ -396,7 +396,7 @@ async function route() {
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
-    PAGES.filter(p=>!G.developerOnly || p[0]==='developer').map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
+    orderedPages().filter(p=>!G.developerOnly || p[0]==='developer').map(([k, ic, l]) => h('a', { class: `nav${k === page ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
     h('div', { class: 'foot' }, h('a', { href: '#' }, '← Skift server'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
   const main = h('main', {}, h('div', { class: 'top' },
     h('button', { class: 'btn sec menu-btn', onclick: () => side.classList.toggle('open') }, '☰'),
