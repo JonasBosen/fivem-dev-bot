@@ -108,7 +108,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get('/api/guild/:gid/developer', auth, devAccess, wrap(async req => {
     const planning=await require('../modules/developer-planning').all(req.guild.id);
     return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC LIMIT 500').all(req.guild.id)).map(t => ({...t, checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})); }));
-  app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').list(req.guild.id)));
+  app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(req=>require('../modules/developer-audit').page(req.guild.id,req.query.before)));
+  app.post('/api/guild/:gid/developer/panel',auth,devAccess,wrap(async req=>{await developer.sendPanel(req.guild,req.body.channel);await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'panel_sent',{channel:req.body.channel});}));
   app.delete('/api/guild/:gid/developer/:id',auth,devAccess,wrap(req=>developer.remove(req.guild,Number(req.params.id),req.session.user.id)));
   app.get('/api/guild/:gid/developer/:id',auth,devAccess,wrap(async req=>{
     const task=await developer.get(req.guild.id,Number(req.params.id));
@@ -159,7 +160,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get('/api/guild/:gid', auth, devAccess, wrap(async (req) => {
     const g = req.guild;
     if (!await isManager(g,req.session.user.id)) {
-      return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[],voiceChannels:[],categories:[],roles:[],settings:{},stats:{}};
+      return {id:g.id,name:g.name,icon:g.iconURL(),members:g.memberCount,developerOnly:true,channels:[...g.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText||c.type===ChannelType.GuildAnnouncement).map(c=>({id:c.id,name:c.name})),voiceChannels:[],categories:[],roles:[],settings:{},stats:{}};
     }
     const channels = [...g.channels.cache.values()].sort((a, b) => a.rawPosition - b.rawPosition);
     return {
@@ -183,7 +184,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
 
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, wrap(async (req) => {
     if (!Object.hasOwn(DEFAULTS, req.params.module)) throw new Error('Ukendt modul');
-    return (await settings.setModule(req.guild.id, req.params.module, req.body))[req.params.module];
+    const result=await settings.setModule(req.guild.id,req.params.module,req.body);
+    if(['developer','general'].includes(req.params.module))await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:req.params.module,settings:req.body});
+    return result[req.params.module];
   }));
 
   app.post('/api/guild/:gid/panel/:type', auth, guildAccess, wrap(async (req) => {

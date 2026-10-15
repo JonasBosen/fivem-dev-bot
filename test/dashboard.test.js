@@ -10,7 +10,7 @@ test('shared dashboard admits developers but protects administrator APIs and rej
   await initDb();
   await settings.setModule('guild-a','developer',{enabled:true,roles:['developer']});
   let role=true;
-  const guild={id:'guild-a',name:'Test',icon:null,memberCount:1,iconURL:()=>null,members:{fetch:async()=>({permissions:{has:()=>false},roles:{cache:{has:id=>role&&id==='developer'}}})}};
+  const guild={id:'guild-a',name:'Test',icon:null,memberCount:1,iconURL:()=>null,channels:{cache:new Map()},members:{fetch:async()=>({permissions:{has:()=>false},roles:{cache:{has:id=>role&&id==='developer'}}})}};
   const client={guilds:{cache:new Map([['guild-a',guild]])},isReady:()=>true,user:{id:'bot'}};
   guild.client=client;
   const server=startWeb(client,{listen:false}).listen(0,'127.0.0.1');
