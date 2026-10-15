@@ -27,8 +27,7 @@ async function canReport(guild,uid) {
   return !!member&&roles.some(id=>member.roles.cache.has(id));
 }
 async function get(gid, id) {
-  if(await db.prepare('SELECT task_id FROM dev_deleted WHERE guild_id=? AND task_id=?').get(gid,id)) return undefined;
-  const task = parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id));
+  const [deleted,row]=await Promise.all([db.prepare('SELECT task_id FROM dev_deleted WHERE guild_id=? AND task_id=?').get(gid,id),db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid,id)]);if(deleted)return undefined;const task=parse(row);
   if(task){const [comments,files,planning]=await Promise.all([db.prepare('SELECT * FROM dev_comments WHERE guild_id=? AND task_id=? ORDER BY id DESC LIMIT 100').all(gid,id),require('./developer-files').list(gid,id),require('./developer-planning').get(gid,id)]);Object.assign(task,{comments,files,planning});}
   return task;
 }

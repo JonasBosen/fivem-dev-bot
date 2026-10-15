@@ -20,13 +20,14 @@ const stream=require('../modules/stream-platforms');
 const {isManager}=require('../access');
 const API = 'https://discord.com/api/v10';
 
-function startWeb(client, { databaseReady = true, databaseError = '', listen = true } = {}) {
+function startWeb(client, { databaseReady = true, databaseError = '', listen = true, runtime } = {}) {
   const app = express();
   const BASE = (process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
   const REDIRECT = `${BASE}/auth/callback`;
   const owners = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
 
   app.set('trust proxy', 1);
+  if(runtime)app.use((req,res,next)=>{databaseReady=runtime.databaseReady;databaseError=runtime.databaseError;next();});
   app.use((req,res,next)=> /(?:\/developer\/\d+\/files|\/media)$/.test(req.path) ? next() : express.json({limit:'1mb'})(req,res,next));
   app.use(session({
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
@@ -139,11 +140,12 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(!image) return res.status(404).json({error:'Billedet findes ikke'});
     res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, no-store').type(image.mime).send(Buffer.from(image.content,'base64'));
   }));
-  app.get('/api/guild/:gid/developer', auth, devAccess, wrap(async req => {
-    const planning=await require('../modules/developer-planning').all(req.guild.id);
-    const readConfig=(await settings.get(req.guild.id)).developer;
-    const replies=Object.fromEntries((await db.prepare("SELECT task_id,MAX(id) AS latest FROM dev_comments WHERE guild_id=? AND author_type='citizen' GROUP BY task_id").all(req.guild.id)).map(r=>[r.task_id,r.latest]));
-    return (await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC').all(req.guild.id)).map(t => ({...t,status:t.status==='done'?'closed':t.status,latestCitizenReply:replies[t.id]||0,unreadCitizenReply:require('../modules/developer-read-state').isUnread({id:t.id,latestCitizenReply:replies[t.id]||0},readConfig,req.session.user.id), checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})).filter(t=>(t.planning.reportType==='request')===(req.query.board==='request')).slice(0,500); }));
+  const developerTasks=async req=>{
+    const [planning,cfg,replyRows,rows]=await Promise.all([require('../modules/developer-planning').all(req.guild.id),settings.get(req.guild.id),db.prepare("SELECT task_id,MAX(id) AS latest FROM dev_comments WHERE guild_id=? AND author_type='citizen' GROUP BY task_id").all(req.guild.id),db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND NOT EXISTS (SELECT 1 FROM dev_deleted WHERE dev_deleted.guild_id=dev_tasks.guild_id AND dev_deleted.task_id=dev_tasks.id) ORDER BY updated_at DESC').all(req.guild.id)]);
+    const readConfig=cfg.developer,replies=Object.fromEntries(replyRows.map(r=>[r.task_id,r.latest]));
+    return rows.map(t => ({...t,status:t.status==='done'?'closed':t.status,latestCitizenReply:replies[t.id]||0,unreadCitizenReply:require('../modules/developer-read-state').isUnread({id:t.id,latestCitizenReply:replies[t.id]||0},readConfig,req.session.user.id), checklist:JSON.parse(t.checklist), attachments:JSON.parse(t.attachments),planning:planning[t.id]||require('../modules/developer-planning').defaults})).filter(t=>(t.planning.reportType==='request')===(req.query.board==='request')).slice(0,500); };
+  app.get('/api/guild/:gid/developer',auth,devAccess,wrap(developerTasks));
+  app.get('/api/guild/:gid/developer/workspace',auth,devAccess,wrap(async req=>{const [tasks,cfg,columns,presence]=await Promise.all([developerTasks(req),settings.get(req.guild.id),require('../modules/developer-board').get(req.guild.id,req.query.board==='request'?'request':'bug'),require('../modules/developer-presence').list(req.guild.id)]);return {tasks,columns,presence,panelConfig:cfg.developer.reportPanel||require('../modules/report-panel-config').defaults,wishPanelConfig:cfg.developer.wishPanel||require('../modules/developer-wishes').defaults};}));
   app.get('/api/guild/:gid/developer/audit/events',auth,devAccess,wrap(async req=>{const result=await require('../modules/developer-audit').page(req.guild.id,req.query.before),planning=await require('../modules/developer-planning').all(req.guild.id),wishes=req.query.board==='request';return {...result,events:result.events.filter(e=>e.task_id?((planning[e.task_id]?.reportType==='request')===wishes):((e.details.board==='request'||e.details.module==='wishPanel')===wishes))};}));
   app.get('/api/guild/:gid/developer/presence',auth,devAccess,wrap(req=>require('../modules/developer-presence').list(req.guild.id)));
   app.post('/api/guild/:gid/developer/presence',auth,devAccess,wrap(req=>require('../modules/developer-presence').heartbeat(req.guild.id,req.session.user.id,req.session.user.username,Date.now(),req.body.active!==false)));
@@ -179,6 +181,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     return developer.get(req.guild.id,task.id);
   }));
   // ---------- API ----------
+  app.get('/ready',(req,res)=>res.status(databaseReady&&(!process.env.DISCORD_TOKEN||client.isReady())?200:503).json({databaseReady,botReady:client.isReady()}));
   app.get('/health', (req, res) => res.json({ status: 'ok', databaseReady, botReady: client.isReady() }));
   app.get('/api/setup', (req, res) => res.json({
     databaseReady, botReady: client.isReady(), streamConnections:stream.integrationStatus(),

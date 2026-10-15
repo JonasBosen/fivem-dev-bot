@@ -13,7 +13,7 @@ const music = require('./modules/music');
 const musicFleet=require('./modules/music-fleet');
 const stream = require('./modules/stream-platforms');
 const { startWeb } = require('./web/server');
-const { initDb } = require('./db');
+const { initDb,db } = require('./db');
 
 const client = new Client({
   intents: [
@@ -87,12 +87,11 @@ client.on(Events.GuildMemberRemove, (m) => community.onLeave(m).catch(() => {}))
 
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
-async function start() {
-  let databaseReady = false, databaseError = ''; 
-  try { await initDb(); databaseReady = true; }
-  catch (error) { databaseError = /^[A-Z0-9_]+$/.test(error.code || '') ? error.code : 'DATABASE_CONNECTION_FAILED'; console.error('[database]', databaseError); }
-  startWeb(client, { databaseReady, databaseError });
-  if (databaseReady && process.env.DISCORD_TOKEN) await client.login(process.env.DISCORD_TOKEN);
-  else console.log('[opsætning] Dashboard kører. Tilføj database og Discord-oplysninger under Environment.');
-}
-start().catch((error) => { console.error('[start]', error.code || error.name); process.exitCode = 1; });
+client.on(Events.Error,error=>console.warn('[discord]',error.code||error.name));
+client.on(Events.ShardError,error=>console.warn('[discord-forbindelse]',error.code||error.name));
+const runtime=require('./service-runtime').createRuntime({initDb,probe:()=>db.prepare('SELECT data FROM settings WHERE guild_id = ?').get('__runtime_check__'),isReady:()=>!process.env.DISCORD_TOKEN||client.isReady(),connect:()=>client.login(process.env.DISCORD_TOKEN)});
+const web=startWeb(client,{runtime,listen:false});const server=web.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log('[dashboard] Serveren lytter på HTTP'));
+runtime.start().catch(error=>console.error('[start]',error.code||error.name));
+let stopping=false;async function shutdown(){if(stopping)return;stopping=true;runtime.stop();const deadline=setTimeout(()=>process.exit(0),10000);deadline.unref();server.close();await client.destroy();await db.close();clearTimeout(deadline);process.exit(0);}
+process.once('SIGTERM',()=>shutdown().catch(()=>process.exit(1)));
+process.once('SIGINT',()=>shutdown().catch(()=>process.exit(1)));

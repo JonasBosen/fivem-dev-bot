@@ -2,7 +2,8 @@ async function renderDeveloperWorkspace(isWishes=false) {
   const base=`/api/guild/${G.id}/developer`,boardType=isWishes?'request':'bug',listUrl=base+'?board='+boardType,columnsUrl=base+'/columns?board='+boardType;const switchBoard=wishes=>{if(wishes===isWishes)return;if(!canLeave())return;sessionStorage.setItem('section:'+G.id+(wishes?'-developer-wishes':'-developer'),wishes?'wishes':'board');location.hash='#/g/'+G.id+'/'+(wishes?'developer-wishes':'developer');};
   const gate=await api('/api/guild/'+G.id+'/developer-access');
   if(!gate.unlocked){const pin=h('input',{type:'password',inputmode:'numeric',pattern:'[0-9]{4}',maxlength:4,autocomplete:'off','aria-label':'Udviklerkode'});return [h('form',{class:'card',onsubmit:async e=>{e.preventDefault();try{await api('/api/guild/'+G.id+'/developer-access/unlock',{method:'POST',body:{pin:pin.value}});await route();}catch(err){toast(err.message,true);}}},h('h2',{},'Lås udviklerpanelet op'),h('p',{},'Indtast den separate firecifrede kode. Din Discord skal også have udviklerrollen.'),pin,h('button',{class:'btn',type:'submit'},'Lås op'))];}
-  const [reportCategories,initialTasks,panelConfig,initialColumns,initialPresence,initialWishConfig]=await Promise.all([api('/report-categories.json'),api(listUrl),api(base+'/panel-config'),api(columnsUrl),api(base+'/presence'),api(base+'/wish-panel-config')]);
+  const [reportCategories,workspace]=await Promise.all([api('/report-categories.json'),api(base+'/workspace?board='+boardType)]);
+  const {tasks:initialTasks,panelConfig,columns:initialColumns,presence:initialPresence,wishPanelConfig:initialWishConfig}=workspace;
   const reportLabel=p=>p?.reportCategory==='other'?p.reportCategoryCustom:reportCategories.find(c=>c.id===p?.reportCategory)?.label||'';
   let presence=initialPresence;const presenceRows=h('tbody');
   let columns=initialColumns,draggedColumn=null;
@@ -45,9 +46,10 @@ async function renderDeveloperWorkspace(isWishes=false) {
   const hashChanged=()=>{window.removeEventListener('beforeunload',unload);window.removeEventListener('hashchange',hashChanged);};
   window.addEventListener('hashchange',hashChanged);
   function canLeave(){return !(dirty||[...windows.values()].some(w=>w.dirty))||window.confirm('Du har ændringer, der ikke er gemt. Vil du forlade opgaven?');}
+  function drawPresence(){presenceRows.replaceChildren(...presence.map(p=>h('tr',{},h('td',{},p.discord_name),h('td',{},(Number(p.total_ms)/3600000).toFixed(2)+' timer'),h('td',{},p.active&&Date.now()-Number(p.last_seen)<75000?'Aktiv i panelet':'Ikke aktiv'),h('td',{},date(Number(p.last_seen))))));}
   function draw(){
     if(layout.dragging)return;
-    calendar?.draw();drawList();presenceRows.replaceChildren(...presence.map(p=>h('tr',{},h('td',{},p.discord_name),h('td',{},(Number(p.total_ms)/3600000).toFixed(2)+' timer'),h('td',{},p.active&&Date.now()-Number(p.last_seen)<75000?'Aktiv i panelet':'Ikke aktiv'),h('td',{},date(Number(p.last_seen))))));layout.clearLanes();
+    calendar?.draw();drawList();drawPresence();layout.clearLanes();
     const active=tasks.filter(t=>!['done','closed','rejected'].includes(t.status));
     const metric=(value,label,state)=>h('span',{class:'work-count status-'+state},value,h('small',{},label));
     counts.replaceChildren(metric(tasks.filter(t=>t.status==='todo').length,'Ikke taget','todo'),metric(tasks.filter(t=>t.status==='doing').length,'Taget · I gang','doing'),metric(active.filter(t=>t.planning?.priority==='critical').length,'Kritiske åbne','critical'),metric(tasks.filter(t=>t.status==='closed').length,'Afsluttet','closed'),metric((presence.reduce((n,p)=>n+Number(p.total_ms||0),0)/3600000).toFixed(2)+' t','Samlet tid i panelet','todo'));
@@ -219,18 +221,18 @@ async function renderDeveloperWorkspace(isWishes=false) {
   const layoutDock=h('div',{class:'layout-dock','aria-label':'Låsning af arbejdsområdets layout'},layoutLock,layoutReset);
   const tools=h('div',{class:'work-tools'},search,priorityFilter,typeFilter,categoryFilter,archiveFilter,h('button',{class:'btn sec',onclick:run(refresh)},'Hent nye sager'));
   pollTimer=setInterval(async()=>{
-    if(polling||dragged||draggedColumn||moving||layout.dragging)return;polling=true;
+    if(document.hidden||polling||dragged||draggedColumn||moving||layout.dragging)return;polling=true;
     try{
       const latest=await api(listUrl);
       for(const task of latest){const previous=replySeen.get(task.id)||0;if(task.unreadCitizenReply&&task.latestCitizenReply>(readThrough.get(task.id)||0))unread.add(task.id);else unread.delete(task.id);if(task.latestCitizenReply>previous)toast('Nyt svar fra borger på sag #'+task.id);replySeen.set(task.id,task.latestCitizenReply||0);}for(const frame of windows.values())frame.badge();
-      const changed=JSON.stringify(tasks)!==JSON.stringify(latest);tasks=latest;if(changed)draw();for(const frame of windows.values())await frame.refresh();
+      const changed=JSON.stringify(tasks)!==JSON.stringify(latest);tasks=latest;if(changed)draw();await Promise.all([...windows.values()].map(frame=>frame.refresh()));
     }catch(e){if(e.status===423){dirty=false;clearInterval(pollTimer);await route();}}finally{polling=false;}
   },7000);
   calendar=developerCalendar({getTasks:()=>tasks,onOpen:async id=>{if(canLeave())await open(id);},onSchedule:schedule,draggedTask:()=>dragged,onDrag:id=>{dragged=id;},canMove:canLeave});
   const list=h('div',{class:'card tablewrap'},h('h2',{},'Alle aktive sager'),h('table',{class:'table'},h('thead',{},h('tr',{},...['Sag','Status','Prioritet','Kalendertid','Ansvarlig'].map(x=>h('th',{},x)))),listBody));
 
   const escape=e=>{if(e.key==='Escape'){const last=[...windows.values()].at(-1);if(last&&!last.dirty){last.dispose();for(const [id,w]of windows)if(w===last)windows.delete(id);}}};window.addEventListener('keydown',escape);
-  const beat=async(suspend=false)=>{if(!suspend&&document.hidden||!windowHost.isConnected)return;try{presence=await api(base+'/presence',{method:'POST',body:{active:!suspend},keepalive:suspend});draw();}catch(e){if(e.status===423){clearInterval(heartbeatTimer);}}};const heartbeatTimer=setInterval(()=>beat(),30000);setTimeout(()=>beat(),0);const onVisibility=()=>beat(document.hidden),onPageHide=()=>beat(true);document.addEventListener('visibilitychange',onVisibility);window.addEventListener('pagehide',onPageHide);
+  const beat=async(suspend=false)=>{if(!suspend&&document.hidden||!windowHost.isConnected)return;try{presence=await api(base+'/presence',{method:'POST',body:{active:!suspend},keepalive:suspend});drawPresence();}catch(e){if(e.status===423){clearInterval(heartbeatTimer);}}};const heartbeatTimer=setInterval(()=>beat(),30000);setTimeout(()=>beat(),0);const onVisibility=()=>beat(document.hidden),onPageHide=()=>beat(true);document.addEventListener('visibilitychange',onVisibility);window.addEventListener('pagehide',onPageHide);
   const previousCleanup=window.developerCleanup;previousCleanup?.();window.developerCleanup=()=>{beat(true);clearInterval(heartbeatTimer);document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('pagehide',onPageHide);window.removeEventListener('keydown',escape);window.removeEventListener('beforeunload',unload);for(const w of windows.values())w.dispose();layout.destroy();};
   draw();
   return [header,dashboardTabs([
