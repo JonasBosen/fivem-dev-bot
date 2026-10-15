@@ -13,7 +13,7 @@ test('developer PIN excludes administrators without code, is hashed, rate limite
     await gate.change(guild,owner,'6482');assert.equal((await gate.status(guild,admin)).unlocked,false);
     for(let i=0;i<5;i++)await assert.rejects(gate.unlock(guild,admin,'0000','ip2'),/Forkert/);
     await assert.rejects(gate.unlock(guild,admin,'6482','ip2'),/mange/);
-    assert.equal((await gate.status(guild,owner)).unlocked,true);
+    const another={user:{id:'another-developer'}};await gate.unlock(guild,another,'64-82','ip2');assert.equal((await gate.status(guild,another)).unlocked,true);assert.equal((await gate.status(guild,owner)).unlocked,true);const sharedA={user:{id:'developer-a'}},sharedB={user:{id:'developer-b'}};await Promise.all([gate.unlock(guild,sharedA,'64-82','same-ip'),gate.unlock(guild,sharedB,'6482','same-ip')]);assert.equal((await gate.status(guild,sharedA)).unlocked,true);assert.equal((await gate.status(guild,sharedB)).unlocked,true);delete sharedA.devGate;assert.equal((await gate.status(guild,sharedB)).unlocked,true);
     owner.devGate.guild.until=Date.now()-1;assert.equal((await gate.status(guild,owner)).unlocked,false);
     assert.equal((await gate.status({id:'other'},admin)).unlocked,false);
   }finally{await db.close();}

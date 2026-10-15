@@ -17,12 +17,13 @@ async function setup(guild,session,pin){
   session.devGate||={};session.devGate[guild.id]={hash,until:Date.now()+TTL};return {ok:true};
 }
 async function unlock(guild,session,pin,ip){
-  const lock=guild.id,old=locks.get(lock)||Promise.resolve();
+  if(typeof pin==='string')pin=pin.trim().replace(/^(\d{2})-(\d{2})$/,'$1$2');
+  const lock=guild.id+':'+session.user.id,old=locks.get(lock)||Promise.resolve();
   const work=old.catch(()=>{}).then(async()=>{
     const row=await get(guild.id);if(!row)throw new Error('Serverejeren skal oprette en kode først');
-    const subjects=['user:'+session.user.id,'ip:'+crypto.createHash('sha256').update(String(ip)).digest('hex'),'guild'];
+    const subjects=['user:'+session.user.id];
     const attempts=[];
-    for(const subject of subjects){const a=await db.prepare('SELECT * FROM dev_gate_attempts WHERE guild_id=? AND subject=?').get(guild.id,subject);if(a&&a.until>Date.now()&&a.failures>=(subject==='guild'?30:5))throw new Error('For mange forkerte forsøg. Vent op til 15 minutter.');attempts.push(a);}
+    for(const subject of subjects){const a=await db.prepare('SELECT * FROM dev_gate_attempts WHERE guild_id=? AND subject=?').get(guild.id,subject);if(a&&a.until>Date.now()&&a.failures>=5)throw new Error('For mange forkerte forsøg. Vent op til 15 minutter.');attempts.push(a);}
     if(!valid(pin)||!crypto.timingSafeEqual(Buffer.from(digest(pin,row.salt),'hex'),Buffer.from(row.hash,'hex'))){
       for(let n=0;n<subjects.length;n++){const a=attempts[n],active=a&&a.until>Date.now();await db.prepare('INSERT INTO dev_gate_attempts (guild_id,subject,failures,until) VALUES (?,?,?,?) ON CONFLICT(guild_id,subject) DO UPDATE SET failures=excluded.failures,until=excluded.until').run(guild.id,subjects[n],active?a.failures+1:1,active?a.until:Date.now()+15*60_000);}
       await audit.record(guild.id,session.user.id,'developer','access_code_rejected');throw new Error('Forkert kode');
