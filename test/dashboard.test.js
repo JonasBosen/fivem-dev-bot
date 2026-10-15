@@ -40,7 +40,17 @@ test('shared dashboard admits developers but protects administrator APIs and rej
     assert.equal((await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:'https://evil.example','Content-Type':'application/json'},body:'{}'})).status,403);
     const created=await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({title:'Test task',description:'Description'})});
     assert.equal(created.status,200);
-    assert.equal((await created.json()).status,'todo');
+    const task=await created.json();
+    assert.equal(task.status,'todo');
+    const image={name:'fejl.png',data:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7XcAAAAASUVORK5CYII='};
+    const uploaded=await fetch(base+'/api/guild/guild-a/developer/'+task.id+'/files',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify(image)});
+    assert.equal(uploaded.status,200);
+    const images=await uploaded.json();
+    const imageUrl='/api/guild/guild-a/developer/'+task.id+'/files/'+images[0].id;
+    const imageResponse=await fetch(base+imageUrl,{headers});
+    assert.equal(imageResponse.status,200);
+    assert.equal(imageResponse.headers.get('content-type'),'image/png');
+    assert.equal((await fetch(base+imageUrl)).status,401);
     role=false;
     assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,403);
   } finally {

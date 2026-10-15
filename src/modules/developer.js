@@ -15,6 +15,7 @@ async function canReport(guild,uid) {
 async function get(gid, id) {
   const task = parse(await db.prepare('SELECT * FROM dev_tasks WHERE guild_id=? AND id=?').get(gid, id));
   if (task) task.comments = await db.prepare('SELECT * FROM dev_comments WHERE guild_id=? AND task_id=? ORDER BY id DESC LIMIT 100').all(gid,id);
+  if(task) task.files=await require('./developer-files').list(gid,id);
   return task;
 }
 async function comment(guild,id,uid,text,asDeveloper=false) {
