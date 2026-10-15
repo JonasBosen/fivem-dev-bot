@@ -1,0 +1,51 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+process.env.DB_FILE=':memory:';
+process.env.BASE_URL='http://localhost:3999';
+process.env.DISCORD_CLIENT_ID='test-app';
+process.env.DISCORD_CLIENT_SECRET='test-secret';
+const {initDb,db,settings}=require('../src/db');
+const {startWeb}=require('../src/web/server');
+test('shared dashboard admits developers but protects administrator APIs and rejects forged requests',async()=>{
+  await initDb();
+  await settings.setModule('guild-a','developer',{enabled:true,roles:['developer']});
+  let role=true;
+  const guild={id:'guild-a',name:'Test',icon:null,memberCount:1,iconURL:()=>null,members:{fetch:async()=>({permissions:{has:()=>false},roles:{cache:{has:id=>role&&id==='developer'}}})}};
+  const client={guilds:{cache:new Map([['guild-a',guild]])},isReady:()=>true,user:{id:'bot'}};
+  guild.client=client;
+  const server=startWeb(client,{listen:false}).listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  const nativeFetch=global.fetch;
+  global.fetch=async(url,opts)=>{
+    if(String(url).endsWith('/oauth2/token')) return Response.json({access_token:'test'});
+    if(String(url).endsWith('/users/@me')) return Response.json({id:'developer-user',username:'Dev'});
+    if(String(url).endsWith('/users/@me/guilds')) return Response.json([]);
+    return nativeFetch(url,opts);
+  };
+  try {
+    assert.equal((await fetch(base+'/api/guild/guild-a/developer')).status,401);
+    assert.equal((await fetch(base+'/auth/callback?code=forged')).status,400);
+    const login=await fetch(base+'/login',{redirect:'manual'});
+    const cookie=login.headers.get('set-cookie').split(';')[0];
+    const state=new URL(login.headers.get('location')).searchParams.get('state');
+    const callback=await fetch(base+'/auth/callback?code=test&state='+state,{headers:{cookie},redirect:'manual'});
+    assert.equal(callback.status,302);
+    const headers={cookie:callback.headers.get('set-cookie').split(';')[0]};
+    const me=await (await fetch(base+'/api/me',{headers})).json();
+    assert.equal(me.guilds[0].id,'guild-a');
+    assert.equal((await (await fetch(base+'/api/guild/guild-a',{headers})).json()).developerOnly,true);
+    assert.equal((await fetch(base+'/api/guild/guild-a/tickets',{headers})).status,403);
+    assert.equal((await fetch(base+'/api/guild/guild-b/developer',{headers})).status,403);
+    assert.equal((await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:'https://evil.example','Content-Type':'application/json'},body:'{}'})).status,403);
+    const created=await fetch(base+'/api/guild/guild-a/developer',{method:'POST',headers:{...headers,origin:process.env.BASE_URL,'Content-Type':'application/json'},body:JSON.stringify({title:'Test task',description:'Description'})});
+    assert.equal(created.status,200);
+    assert.equal((await created.json()).status,'todo');
+    role=false;
+    assert.equal((await fetch(base+'/api/guild/guild-a/developer',{headers})).status,403);
+  } finally {
+    global.fetch=nativeFetch;
+    await new Promise(resolve=>server.close(resolve));
+    await db.close();
+  }
+});

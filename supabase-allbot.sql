@@ -1,0 +1,107 @@
+CREATE SCHEMA IF NOT EXISTS allbot;
+
+CREATE TABLE IF NOT EXISTS allbot.settings (guild_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS allbot.tickets (
+  id SERIAL PRIMARY KEY, guild_id TEXT, channel_id TEXT, user_id TEXT, type TEXT,
+  status TEXT DEFAULT 'open', claimed_by TEXT, answers TEXT, transcript TEXT,
+  created_at BIGINT, closed_at BIGINT, closed_by TEXT);
+CREATE TABLE IF NOT EXISTS allbot.applications (
+  id SERIAL PRIMARY KEY, guild_id TEXT, form_id TEXT, user_id TEXT, answers TEXT,
+  status TEXT DEFAULT 'pending', reviewed_by TEXT, message_id TEXT, channel_id TEXT, created_at BIGINT);
+CREATE TABLE IF NOT EXISTS allbot.levels (guild_id TEXT, user_id TEXT, xp INTEGER DEFAULT 0, PRIMARY KEY (guild_id, user_id));
+CREATE TABLE IF NOT EXISTS allbot.warnings (id SERIAL PRIMARY KEY, guild_id TEXT, user_id TEXT, mod_id TEXT, reason TEXT, created_at BIGINT);
+CREATE TABLE IF NOT EXISTS allbot.giveaways (
+  id SERIAL PRIMARY KEY, guild_id TEXT, channel_id TEXT, message_id TEXT, prize TEXT,
+  winners INTEGER, ends_at BIGINT, entries TEXT DEFAULT '[]', ended INTEGER DEFAULT 0, winner_ids TEXT, host_id TEXT);
+CREATE TABLE IF NOT EXISTS allbot.stream_state (guild_id TEXT, key TEXT, value TEXT, PRIMARY KEY (guild_id, key));
+
+CREATE TABLE IF NOT EXISTS allbot.dev_tasks (id SERIAL PRIMARY KEY, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, status TEXT DEFAULT 'todo', notes TEXT DEFAULT '', checklist TEXT DEFAULT '[]', attachments TEXT DEFAULT '[]', channel_id TEXT, message_id TEXT, sync_error TEXT DEFAULT '', legacy_id TEXT, version INTEGER DEFAULT 1, created_at BIGINT, updated_at BIGINT);
+CREATE TABLE IF NOT EXISTS allbot.dev_history (id SERIAL PRIMARY KEY, guild_id TEXT, task_id INTEGER, user_id TEXT, status TEXT, created_at BIGINT);
+CREATE TABLE IF NOT EXISTS allbot.dev_images (task_id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, mime TEXT NOT NULL, content TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS dev_tasks_guild ON allbot.dev_tasks(guild_id);
+CREATE UNIQUE INDEX IF NOT EXISTS dev_tasks_legacy ON allbot.dev_tasks(guild_id,legacy_id);
+
+
+CREATE TABLE IF NOT EXISTS allbot.query_templates (key TEXT PRIMARY KEY, statement TEXT NOT NULL, parameters INTEGER NOT NULL);
+REVOKE ALL ON SCHEMA allbot FROM anon, authenticated;
+REVOKE ALL ON ALL TABLES IN SCHEMA allbot FROM anon, authenticated;
+CREATE OR REPLACE FUNCTION public.allbot_execute(query_key TEXT, params JSONB DEFAULT '[]'::JSONB)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, allbot AS $function$
+DECLARE template allbot.query_templates%ROWTYPE; statement TEXT; result JSONB; idx INTEGER; pieces TEXT[];
+BEGIN
+  SELECT * INTO template FROM allbot.query_templates WHERE key=query_key;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Unknown query'; END IF;
+  IF jsonb_typeof(params) IS DISTINCT FROM 'array' OR jsonb_array_length(params)<>template.parameters THEN RAISE EXCEPTION 'Invalid parameters'; END IF;
+  pieces := regexp_split_to_array(template.statement, E'\\$[0-9]+');
+  statement := pieces[1];
+  IF template.parameters>0 THEN
+    FOR idx IN 1..template.parameters LOOP
+      statement := statement || quote_nullable(params->>(idx-1)) || pieces[idx+1];
+    END LOOP;
+  END IF;
+  IF statement !~* '^SELECT' THEN statement := statement || ' RETURNING *'; END IF;
+  EXECUTE 'WITH result AS ('||statement||') SELECT coalesce(jsonb_agg(to_jsonb(result)),''[]''::jsonb) FROM result' INTO result;
+  RETURN jsonb_build_object('rows',result,'rowCount',jsonb_array_length(result));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.allbot_execute(TEXT,JSONB) FROM PUBLIC, anon, authenticated;
+GRANT USAGE ON SCHEMA allbot TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA allbot TO service_role;
+REVOKE INSERT, UPDATE, DELETE ON allbot.query_templates FROM service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA allbot TO service_role;
+GRANT EXECUTE ON FUNCTION public.allbot_execute(TEXT,JSONB) TO service_role;
+
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('1a2cbc57968a4c5c9fc7a762e029c2d133c8daecff53a8c6b69de4e2a16bf423','SELECT data FROM allbot.settings WHERE guild_id = $1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('c0360566db82df309c9596a3c8defd8269adc478228e0530f0c276d7b4633f0c','INSERT INTO allbot.settings (guild_id, data) VALUES ($1, $2) ON CONFLICT(guild_id) DO UPDATE SET data = excluded.data',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('c6d204bcbb895e1ca20571ecec74bdb9a5d101a706c2a6413050333273d768f9','SELECT mime,content FROM allbot.dev_images WHERE guild_id=$1 AND task_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('3ab3294ef50c01a327f6690fea1a998f8a0af6ea894a0ddc4d9960f9f37570d5','SELECT * FROM allbot.dev_tasks WHERE guild_id=$1 ORDER BY updated_at DESC LIMIT 500',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('dd5ecff1e217fa4801abcc2ad792fcbf8b1d1bc4ddbb79bb107762749f0912b7','SELECT COUNT(*) n FROM allbot.tickets WHERE guild_id=$1 AND status=''open''',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('078fc70dcced8610f2d42f4cc136da879258684f72e5d95711b387f0e34f3aff','SELECT COUNT(*) n FROM allbot.tickets WHERE guild_id=$1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('b8d439719234ef78bfdce3f8c121e4efe7179a7d27d90ca5d3cb886d28530813','SELECT COUNT(*) n FROM allbot.applications WHERE guild_id=$1 AND status=''pending''',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('88ce119d14b89eb5c4f1ae582743adafa48b219ba359596d2c8772ef181c8258','SELECT COUNT(*) n FROM allbot.giveaways WHERE guild_id=$1 AND ended=0',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('7a44d28dd2f8bfbc64357749c05a74e02975a783901bfcdbf02e06072accd71b','SELECT COUNT(*) n FROM allbot.warnings WHERE guild_id=$1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('6094a14774be27364c62957cdf9c902cd1ebaad274839ea4abb5570059c20775','SELECT id, channel_id, user_id, type, status, claimed_by, answers, created_at, closed_at, closed_by FROM allbot.tickets WHERE guild_id=$1 ORDER BY id DESC LIMIT 200',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('259a196710007196abb18c6c625b8e29c5cc438160b02da3abcde523cf15be0e','SELECT transcript FROM allbot.tickets WHERE id=$1 AND guild_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('2066fba311fd86ff0323bdab9d991d3e2b1aa38572eed9a2677c5e4071710500','SELECT * FROM allbot.tickets WHERE id=$1 AND guild_id=$2 AND status=''open''',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('472b0c238d8c96b7a0b790563a4f39f6d31456908de7e98a4b390c02d2ff767d','SELECT * FROM allbot.applications WHERE guild_id=$1 ORDER BY id DESC LIMIT 200',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('d9a742b9edc0bfd5798337efa6e64afb529158f0ee47bd205cd80a1aad4e441b','SELECT * FROM allbot.giveaways WHERE guild_id=$1 ORDER BY id DESC LIMIT 100',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('91e8f250a1ad20e6a0b16ad22ea25ddf44c76fb29b2eafe7a9949a5adacbfcff','SELECT id FROM allbot.giveaways WHERE id=$1 AND guild_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('76936219d03125eaf3492a36f653faf92f7e7dcc88ed62af4e80c89c6c1f2f4b','SELECT * FROM allbot.warnings WHERE guild_id=$1 ORDER BY id DESC LIMIT 100',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('d6cde35cba669bc6f56bc082c1a2f3f957ceb06e3d64e5478ac88f8068fcec22','DELETE FROM allbot.warnings WHERE id=$1 AND guild_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('42b8a56b6bea525fd00de2f918281aff8faf91802e6d001f19f36beb143defbf','SELECT id FROM allbot.applications WHERE guild_id=$1 AND user_id=$2 AND form_id=$3 AND status=''pending''',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('087bd35a58b4108fa5270e9c2e00d360d65e1dba032fecb0ecd1f0c00e33e1d9','SELECT * FROM allbot.applications WHERE id=$1 AND guild_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('8dc54223e3967e4bbe4a24241cd9a0957dffaf7d0cb6fcc4cd05ac477414321f','UPDATE allbot.applications SET status=$1, reviewed_by=$2 WHERE id=$3',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('f55f84b3b81067ded6279c7fd7a97774693749042bf7b424e6fd9d344082b06c','INSERT INTO allbot.applications (guild_id, form_id, user_id, answers, created_at) VALUES ($1,$2,$3,$4,$5)',5) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('d64902d4a38d4d9b9ab63f58e0359c13b715bc881aed725116ca26dba1a38f00','UPDATE allbot.applications SET message_id=$1, channel_id=$2 WHERE id=$3',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('b04148fc9c86610cf201689e80b648870194f9982e2b956b4ed1bc030af8cefd','SELECT xp FROM allbot.levels WHERE guild_id=$1 AND user_id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('a04c2ea6e413e7719ec1c3f1a087fdac3f3220bec973a0de70c7c3020f13dc00','INSERT INTO allbot.levels (guild_id, user_id, xp) VALUES ($1,$2,$3) ON CONFLICT(guild_id,user_id) DO UPDATE SET xp = levels.xp + $4',4) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('df64809cdf8cd4909c3d78dd20163244f74b7f47057ffde505f5f98ae43fe037','SELECT COUNT(*) n FROM allbot.levels WHERE guild_id=$1 AND xp > $2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('26c8f324beb70ed31b42bc9344b236803fdd58c2e558f9a1bb7cd9ea57feee2f','SELECT user_id, xp FROM allbot.levels WHERE guild_id=$1 ORDER BY xp DESC LIMIT $2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('a0ec022d23ac808410d3fda60248b26806063bbc4df0b91a16d189b120d1fcbe','SELECT * FROM allbot.dev_tasks WHERE guild_id=$1 AND id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('8c30bf336e9c061be8fd79bd220df72ce94620dc6040e158283c315a494ff4d2','INSERT INTO allbot.dev_tasks (guild_id,user_id,title,description,status,notes,checklist,attachments,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',10) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('b3d457cd6426b51710354f330473ca5911b7045be9fb36d0426062e9ed4f6bfa','INSERT INTO allbot.dev_images (task_id,guild_id,mime,content) VALUES ($1,$2,$3,$4)',4) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('b4a78d9e83a49b4dadc2e5ecfd2e33cae388388b10e5a8352174f77a2f35e9c2','UPDATE allbot.dev_tasks SET sync_error=$1 WHERE guild_id=$2 AND id=$3',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('df722d80495c8800993a03a155e45d715889168b3febdd95a2be665f14e47023','UPDATE allbot.dev_tasks SET title=$1,description=$2,status=$3,notes=$4,checklist=$5,updated_at=$6,version=version+1 WHERE guild_id=$7 AND id=$8 AND version=$9',9) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('0770b6c00d384145340416ef25f85cfca37b43ac6624bf33c2580fa4848621c8','INSERT INTO allbot.dev_history (guild_id,task_id,user_id,status,created_at) VALUES ($1,$2,$3,$4,$5)',5) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('7601b35604fac848362c307bf6c9f389253fa9d4d58c3cc90a3e18e24212e39c','SELECT id FROM allbot.dev_tasks WHERE guild_id=$1 AND user_id=$2 AND created_at>$3',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('b2497c9e4c3c22809ad5e3337307dc19ad289a7b58b640bc47d12273aba85a57','UPDATE allbot.dev_tasks SET channel_id=$1,message_id=$2 WHERE guild_id=$3 AND id=$4',4) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('75bfb1688ac136cd5f2d125ad3cca55ccd42aed8a1cf468af5e98c23ad02571e','INSERT INTO allbot.giveaways (guild_id, channel_id, prize, winners, ends_at, host_id) VALUES ($1,$2,$3,$4,$5,$6)',6) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('8f30a80ada36f825771c104355141b6e70cb60d3b15825adda492c0ac66e0e23','SELECT * FROM allbot.giveaways WHERE id=$1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('ae0bb2b5752433a56e65c88b439ab7f61aabc62b6b089e793cf15a9349abc123','DELETE FROM allbot.giveaways WHERE id=$1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('532f3a5a01a058900915f97599fabde1610ca73e8135315befbdcd84140bf46c','UPDATE allbot.giveaways SET message_id=$1 WHERE id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('26609d685f731985b4dd1c541847cb84658ef778432de266423099a26f8cd69e','UPDATE allbot.giveaways SET ended=1, winner_ids=$1 WHERE id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('5df7de43a9cb7e17122aea4d9520240ec50edb6e2d03cfa65fc38a4f4080742a','SELECT id FROM allbot.giveaways WHERE ended=0 AND ends_at<=$1',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('89f65b3e6ed3f4e09c643c1be984ec595700361138f92a07d5ccac86e6685fd5','UPDATE allbot.giveaways SET entries=$1 WHERE id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('199ff62729f6d6e970f36fe7d5ef095e95da85adb19dcc24a0ff7e1f600eaa6f','INSERT INTO allbot.warnings (guild_id, user_id, mod_id, reason, created_at) VALUES ($1,$2,$3,$4,$5)',5) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('0c1c661354a19f90c83319a16c2bbddb6ced08c5a80c66f401f21611c5901796','SELECT * FROM allbot.warnings WHERE guild_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT 15',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('c09e21e83e5709f4adef2859dd7f3919806982d4ab16198a2b48115f89df9b84','SELECT value FROM allbot.stream_state WHERE guild_id=$1 AND key=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('c59cf78c1711724e4219ad7de713ae94fe6686cdf2857418f049c2cd988747cb','DELETE FROM allbot.stream_state WHERE guild_id=$1 AND key=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('0b871b9410a52959a6e0fb6ff4966eb7ab7420d4e79c68bbd0dbb9d4ebfd0ff6','INSERT INTO allbot.stream_state (guild_id,key,value) VALUES ($1,$2,$3) ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value',3) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('abccc10d41da752ac0cbace93313764fc121d52933b44b22abb6a589ffb11804','SELECT COUNT(*) n FROM allbot.tickets WHERE guild_id=$1 AND user_id=$2 AND status=''open''',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('47ff1961349548460cfeb24ccbf832b29cc1afa425370f2c8d8a2ec359b29540','INSERT INTO allbot.tickets (guild_id, user_id, type, answers, created_at) VALUES ($1,$2,$3,$4,$5)',5) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('e1f05f669b91ab43f383979156cebdd4456a4cf777c317f434a96dc0dd9cb044','UPDATE allbot.tickets SET channel_id=$1 WHERE id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('048ae0c97e33d26ea534ee559551f3ab26f8e238e95aa8b6d0cdb60ba97f1280','UPDATE allbot.tickets SET status=''closed'', closed_at=$1, closed_by=$2, transcript=$3 WHERE id=$4',4) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('85500cb11ebd61970be7933cd016f7d7322ad74a3c1f8493e745b5e37ddd4303','SELECT * FROM allbot.tickets WHERE channel_id=$1 AND status=''open''',1) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('6605bad62a418e21f65791d7f181057f626df783fdaf67c16e9b7ccb30c14ae8','UPDATE allbot.tickets SET claimed_by=$1 WHERE id=$2',2) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('91f692ba07f8d8b3d2573263fdd44f513588fc2bc1377ed52b25116423b3c7e3','SELECT data FROM public.bot_state WHERE id=1',0) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;
+INSERT INTO allbot.query_templates (key,statement,parameters) VALUES ('c0e7faf254308993aeed04f42afd60ac5a772c8d864b700ee4e9f1baba7f9cfe','INSERT INTO allbot.dev_tasks (guild_id,user_id,title,description,status,notes,checklist,attachments,created_at,updated_at,legacy_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(guild_id,legacy_id) DO NOTHING',11) ON CONFLICT(key) DO UPDATE SET statement=excluded.statement,parameters=excluded.parameters;

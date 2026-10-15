@@ -1,33 +1,31 @@
-# Render Blueprint: Dashboard -> New -> Blueprint -> vælg dette repo.
-# Render opretter tjenesten og beder dig udfylde de hemmelige værdier (sync: false).
 services:
   - type: web
     name: fivem-dev-bot
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_PROJECT_REF
+        value: kdxxtdiydepuiecpdpha
+      - key: SUPABASE_URL
+        value: https://kdxxtdiydepuiecpdpha.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
       - key: DISCORD_TOKEN
         sync: false
-      - key: CLIENT_ID
+      - key: DISCORD_CLIENT_ID
         sync: false
-      - key: CLIENT_SECRET
-        sync: false
-      - key: GUILD_ID
-        sync: false
-      - key: DEV_ROLE_ID
-        sync: false
-      - key: LOG_CHANNEL_ID
-        sync: false
-      - key: REVIEW_CHANNEL_ID
+      - key: DISCORD_CLIENT_SECRET
         sync: false
       - key: BASE_URL
         sync: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: SUPABASE_URL
+      - key: TWITCH_CLIENT_ID
         sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: TWITCH_CLIENT_SECRET
         sync: false
