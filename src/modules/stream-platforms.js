@@ -105,7 +105,7 @@ async function unlink(guild,p,uid,actor){
 async function json(url,options={}){
   const label=url.includes('twitch.tv')?(url.includes('/oauth2/token')?'Twitch-login':'Twitch live-status'):url.includes('kick.com')?'Kick API':'YouTube API';
   let r;
-  try{r=await fetch(url,{...options,signal:AbortSignal.timeout(15000)});}catch(error){throw new Error(label+': '+(['TimeoutError','AbortError'].includes(error.name)?'Svaret tog over 15 sekunder. Der prøves igen ved næste kontrol.':'Forbindelsen kunne ikke oprettes.'));}
+  try{r=await fetch(url,{...options,signal:AbortSignal.timeout(15000)});}catch(error){throw Object.assign(new Error(label+': '+(['TimeoutError','AbortError'].includes(error.name)?'Svaret tog over 15 sekunder. Der prøves igen ved næste kontrol.':'Forbindelsen kunne ikke oprettes.')),{retryable:true});}
   if(!r.ok){
     let reason='';try{const body=await r.json();if(/invalid client secret/i.test(body.message||''))reason=' · Client Secret blev afvist';else if(/invalid client/i.test(body.message||''))reason=' · Client ID blev afvist';}catch{}
     throw new Error(label+' svarede HTTP '+r.status+reason);
@@ -116,7 +116,11 @@ async function appToken(p){
   const old=tokens.get(p);if(old&&old.until>Date.now())return old.token;
   const upper=p.toUpperCase();
   const body=new URLSearchParams({client_id:process.env[upper+'_CLIENT_ID']?.trim(),client_secret:process.env[upper+'_CLIENT_SECRET']?.trim(),grant_type:'client_credentials'});
-  const j=await json(p==='twitch'?'https://id.twitch.tv/oauth2/token':'https://id.kick.com/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+  let j;
+  for(let attempt=0;attempt<2;attempt++){
+    try{j=await json(p==='twitch'?'https://id.twitch.tv/oauth2/token':'https://id.kick.com/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});break;}
+    catch(error){if(attempt||!error.retryable)throw error;await new Promise(resolve=>setTimeout(resolve,500));}
+  }
   if(!j.access_token)throw new Error('Platformens login blev afvist');
   tokens.set(p,{token:j.access_token,until:Date.now()+(j.expires_in-60)*1000});return j.access_token;
 }
