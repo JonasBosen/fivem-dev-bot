@@ -1,0 +1,20 @@
+{
+  "name": "staff-panel-online",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Online Discord staff panel with Discord login, role-based access and Supabase PostgreSQL database.",
+  "scripts": {
+    "start": "node seed-person.js && node team-server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.1",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.9"
+  }
+}
