@@ -4,6 +4,10 @@ async function renderDeveloperWorkspace(isWishes=false) {
   if(!gate.unlocked){const pin=h('input',{type:'password',inputmode:'numeric',pattern:'[0-9]{2}-?[0-9]{2}',maxlength:5,autocomplete:'off','aria-label':'Udviklerkode'});return [h('form',{class:'card',onsubmit:async e=>{e.preventDefault();try{await api('/api/guild/'+G.id+'/developer-access/unlock',{method:'POST',body:{pin:pin.value}});await route();}catch(err){toast(err.message,true);}}},h('h2',{},'Lås udviklerpanelet op'),h('p',{},'Indtast den separate firecifrede kode, med eller uden bindestreg. Din Discord skal også have udviklerrollen.'),pin,h('button',{class:'btn',type:'submit'},'Lås op'))];}
   const [reportCategories,workspace]=await Promise.all([api('/report-categories.json'),api(base+'/workspace?board='+boardType)]);
   const {tasks:initialTasks,panelConfig,columns:initialColumns,presence:initialPresence,wishPanelConfig:initialWishConfig}=workspace;
+  const caseBadges={bug:h('span',{class:'conversation-unread',hidden:true,'aria-live':'polite'}),request:h('span',{class:'conversation-unread',hidden:true,'aria-live':'polite'})};
+  let badgeRequest=0;
+  async function updateCaseBadges(markId){const version=++badgeRequest;try{const counts=await api(markId?base+'/'+markId+'/case-read':base+'/new-cases',markId?{method:'POST',body:{}}:undefined);if(version!==badgeRequest)return;for(const type of ['bug','request']){const badge=caseBadges[type],count=counts[type]||0;badge.hidden=count===0;badge.textContent=String(count);badge.setAttribute('aria-label',count+' ulæste sager');}}catch(e){if(markId)toast('Læsestatus blev ikke gemt: '+e.message,true);}}
+  await updateCaseBadges();
   const reportLabel=p=>p?.reportCategory==='other'?p.reportCategoryCustom:reportCategories.find(c=>c.id===p?.reportCategory)?.label||'';
   let presence=initialPresence;const presenceRows=h('tbody');
   let columns=initialColumns,draggedColumn=null;
@@ -77,9 +81,9 @@ async function renderDeveloperWorkspace(isWishes=false) {
     await api(base+'/'+id,{method:'PUT',body:{...task,planning:{...task.planning,scheduledStart:start.toISOString(),scheduledEnd:end.toISOString()}}});
     dirty=false;await refresh();if(windows.has(id)&&!windows.get(id).dirty)await open(id,true);toast('Kalendertid er gemt og borgerens statusbesked er opdateret');
   }
-  async function refresh(){tasks=await api(listUrl);draw();}
+  async function refresh(){await updateCaseBadges();tasks=await api(listUrl);draw();}
   async function open(id,reload=false){
-    const existing=windows.get(id);if(existing&&!reload){existing.focus();return;}if(existing){existing.dispose();windows.delete(id);}
+    const existing=windows.get(id);if(existing&&!reload){existing.focus();await updateCaseBadges(id);return;}if(existing){existing.dispose();windows.delete(id);}
     let dirty=false,saving=false,conversationVisible=false,refreshConversation=null,updateConversationBadge=null;
     const selected=id,detail=h('section',{class:'card work-detail'}),drawer=h('section',{class:'case-window','data-case-id':id,role:'dialog','aria-label':'Opgave #'+id}),saveInfo=h('span',{class:'muted'});
     const canLeave=()=>!dirty||window.confirm('Du har ændringer, der ikke er gemt. Luk sagen alligevel?');
@@ -90,6 +94,7 @@ async function renderDeveloperWorkspace(isWishes=false) {
     const frame={get dirty(){return dirty;},focus(){drawer.dispatchEvent(new PointerEvent('pointerdown'));},dispose(){disposeLayout();drawer.remove();},refresh:()=>refreshConversation?.(),badge:()=>updateConversationBadge?.()};windows.set(id,frame);detail.replaceChildren(h('p',{class:'muted'},'Indlæser sag…'));
     let task;try{task=await api(`${base}/${id}`);}catch(e){frame.dispose();windows.delete(id);throw e;}if(windows.get(id)!==frame)return;
 
+    if(!reload)await updateCaseBadges(id);
     const draft=structuredClone(task), banner=h('div',{class:`work-state status-${draft.status}`});
     saveInfo.textContent='Gemt · '+date(task.updated_at);saveInfo.className='muted';
     draft.planning ||= {};
@@ -225,7 +230,7 @@ async function renderDeveloperWorkspace(isWishes=false) {
   pollTimer=setInterval(async()=>{
     if(document.hidden||polling||dragged||draggedColumn||moving||layout.dragging)return;polling=true;
     try{
-      const latest=await api(listUrl);
+      const [latest]=await Promise.all([api(listUrl),updateCaseBadges()]);
       for(const task of latest){const previous=replySeen.get(task.id)||0;if(task.unreadCitizenReply&&task.latestCitizenReply>(readThrough.get(task.id)||0))unread.add(task.id);else unread.delete(task.id);if(task.latestCitizenReply>previous)toast('Nyt svar fra borger på sag #'+task.id);replySeen.set(task.id,task.latestCitizenReply||0);}for(const frame of windows.values())frame.badge();
       const changed=JSON.stringify(tasks)!==JSON.stringify(latest);tasks=latest;if(changed)draw();await Promise.all([...windows.values()].map(frame=>frame.refresh()));
     }catch(e){if(e.status===423){dirty=false;clearInterval(pollTimer);await route();}}finally{polling=false;}
@@ -239,8 +244,8 @@ async function renderDeveloperWorkspace(isWishes=false) {
   draw();
   return [header,dashboardTabs([
     {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:isWishes?[wishPanel,wishButtonBuilder,changePin]:[buttonBuilder,discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
-    {id:'board',icon:'▦',label:'FiveM-arbejdstavle',onOpen:()=>switchBoard(false),content:isWishes?[]:[h('p',{class:'muted'},'Træk kolonnernes overskrifter for at placere dem frit på tavlen. Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,columnEditor,newCard,board]},
-    {id:'wishes',icon:'💡',label:'Ønsker til serveren',onOpen:()=>switchBoard(true),content:isWishes?[tools,columnEditor,newCard,board]:[]},
+    {id:'board',icon:'▦',label:'FiveM-arbejdstavle',badge:caseBadges.bug,onOpen:()=>switchBoard(false),content:isWishes?[]:[h('p',{class:'muted'},'Træk kolonnernes overskrifter for at placere dem frit på tavlen. Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,columnEditor,newCard,board]},
+    {id:'wishes',icon:'💡',label:'Ønsker til serveren',badge:caseBadges.request,onOpen:()=>switchBoard(true),content:isWishes?[tools,columnEditor,newCard,board]:[]},
     {id:'calendar',icon:'◷',label:'Kalender',content:[calendar.element]},
     {id:'list',icon:'☷',label:'Sagsliste',content:[list]},
     {id:'registry',icon:'🗂',label:'Serverregister',content:[registry.element],onOpen:()=>registry.load().catch(e=>toast(e.message,true))},

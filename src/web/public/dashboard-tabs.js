@@ -9,7 +9,7 @@ function dashboardTabs(sections,key,initial) {
     try{panelTabSet('section:'+key,sections[index].id);}catch{}
     sections[index].onOpen?.();
   }
-  sections.forEach((s,i)=>nav.append(h('button',{type:'button',role:'tab','aria-controls':panels[i].id,onclick:()=>select(i),onkeydown:e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const n=(i+(e.key==='ArrowRight'?1:-1)+sections.length)%sections.length;select(n);nav.children[n].focus();}}},h('span',{class:'section-icon'},s.icon||'◈'),h('span',{},s.label))));
+  sections.forEach((s,i)=>nav.append(h('button',{type:'button',role:'tab','aria-controls':panels[i].id,onclick:()=>select(i),onkeydown:e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const n=(i+(e.key==='ArrowRight'?1:-1)+sections.length)%sections.length;select(n);nav.children[n].focus();}}},h('span',{class:'section-icon'},s.icon||'◈'),h('span',{},s.label),s.badge||null)));
   root.append(nav,...panels);select(active);return root;
 }
 function categorySections(page,content){
