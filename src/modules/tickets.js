@@ -9,7 +9,7 @@ const { embed, fill, memberVars, hasAnyRole, isAdmin, sendTo, escapeHtml } = req
 
 const EPH = { flags: MessageFlags.Ephemeral };
 
-function panelPayload(cfg) {
+function panelPayload(cfg,guild) {
   const types = cfg.types.slice(0, 25);
   let row;
   if (types.length <= 5) {
@@ -22,12 +22,12 @@ function panelPayload(cfg) {
     row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('ticket:select').setPlaceholder('Vælg kategori')
       .addOptions(types.map((t) => ({ label: t.label.slice(0, 100), value: t.id, ...(t.emoji ? { emoji: t.emoji } : {}) }))));
   }
-  return { embeds: [embed(cfg.panelTitle, cfg.panelText)], components: types.length ? [row] : [] };
+  const e=embed(cfg.panelTitle,cfg.panelText);if(guild)e.setAuthor({name:guild.name,...(guild.iconURL?.()?{iconURL:guild.iconURL({size:64})}:{})});return {embeds:[e],components:types.length?[row]:[]};
 }
 
 async function sendPanel(guild, channelId) {
   const cfg = (await settings.get(guild.id)).tickets;
-  const msg = await sendTo(guild, channelId, await require('./discord-design').apply(guild.id,'tickets',await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),panelPayload(cfg))));
+  const msg = await sendTo(guild, channelId, await require('./discord-design').apply(guild.id,'tickets',await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),panelPayload(cfg,guild))));
   if (!msg) throw new Error('Kunne ikke sende panelet – tjek kanal og botens rettigheder.');
   return msg;
 }
