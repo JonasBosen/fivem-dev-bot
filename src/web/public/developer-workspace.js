@@ -94,7 +94,7 @@ async function renderDeveloperWorkspace(isWishes=false) {
     const frame={get dirty(){return dirty;},focus(){drawer.dispatchEvent(new PointerEvent('pointerdown'));},dispose(){disposeLayout();drawer.remove();},refresh:()=>refreshConversation?.(),badge:()=>updateConversationBadge?.()};windows.set(id,frame);detail.replaceChildren(h('p',{class:'muted'},'Indlæser sag…'));
     let task;try{task=await api(`${base}/${id}`);}catch(e){frame.dispose();windows.delete(id);throw e;}if(windows.get(id)!==frame)return;
 
-    if(!reload)await updateCaseBadges(id);
+    if(!reload)updateCaseBadges(id);
     const draft=structuredClone(task), banner=h('div',{class:`work-state status-${draft.status}`});
     saveInfo.textContent='Gemt · '+date(task.updated_at);saveInfo.className='muted';
     draft.planning ||= {};
