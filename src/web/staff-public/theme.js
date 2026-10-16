@@ -1,9 +1,10 @@
 (() => {
-  const KEY = 'dreamNetworkThemeV2';
+  let memory=null,uid='';try{if(window.parent!==window&&window.parent.personalInterfaceStore){memory=window.parent;uid=memory.personalInterfaceId.split(':').at(-1);}}catch{}
+  const KEY = 'dreamNetworkThemeV2'+(uid?':'+uid:'');
   const defaults = { accent: '#ff1744', background: '#07080c' };
   const backgrounds = { '#07080c':'Carbon', '#0d1117':'Midnight', '#14171d':'Graphite' };
   let theme = { ...defaults };
-  try { theme = { ...defaults, ...(JSON.parse(localStorage.getItem(KEY) || '{}')) }; } catch {}
+  try { theme = { ...defaults, ...(JSON.parse((memory?.panelTabGet('staff-theme'))||localStorage.getItem(KEY)||'{}')) }; } catch {}
   const style = document.createElement('style');
   style.id = 'dnThemeOverrides';
   document.head.appendChild(style);
@@ -67,7 +68,7 @@
     `;
   }
 
-  function save() { localStorage.setItem(KEY, JSON.stringify(theme)); apply(); }
+  function save() { const value=JSON.stringify(theme);localStorage.setItem(KEY,value);memory?.panelTabSet('staff-theme',value);apply(); }
   function settingsUI() {
     const page = document.getElementById('settings');
     if (!page || page.dataset.themeReady) return;
@@ -76,7 +77,7 @@
       <div class="grid" style="grid-template-columns:1fr 1fr">
         <div class="card"><h2>🎨 Accent</h2><p class="muted">Dream Network rød er standard. Du kan stadig vælge din egen accent.</p><input id="dnAccent" type="color" value="${esc(theme.accent)}" style="height:58px;padding:4px;cursor:pointer"><input id="dnAccentText" value="${esc(theme.accent)}" maxlength="7" placeholder="#ff1744"></div>
         <div class="card"><h2>🖥️ Baggrund</h2><p class="muted">Vælg en mørk premium baggrund.</p><select id="dnBgPreset" style="width:100%;padding:12px;margin:6px 0 12px;background:#080a0e;color:#fff;border:1px solid #3d4650;border-radius:8px"><option value="#07080c">Carbon</option><option value="#0d1117">Midnight</option><option value="#14171d">Graphite</option></select></div>
-      </div><div class="card" style="margin-top:18px"><h2>💾 Tema</h2><p class="muted">Temaet gemmes i denne browser.</p><button id="dnResetTheme" class="gray">↩️ Nulstil Dream Network tema</button></div>`;
+      </div><div class="card" style="margin-top:18px"><h2>💾 Tema</h2><p class="muted">Dit tema gemmes personligt i databasen, når staff-panelet bruges fra den fælles side.</p><button id="dnResetTheme" class="gray">↩️ Nulstil Dream Network tema</button></div>`;
     const ac=document.getElementById('dnAccent'),at=document.getElementById('dnAccentText'),preset=document.getElementById('dnBgPreset');
     preset.value=backgrounds[theme.background]?theme.background:defaults.background;
     ac.oninput=()=>{at.value=ac.value;theme.accent=ac.value;save()};
