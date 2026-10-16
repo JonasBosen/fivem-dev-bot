@@ -61,6 +61,7 @@ client.on(Events.InteractionCreate, async (i) => {
       if (mod) return await mod.onCommand(i);
     }
     const id = i.customId || '';
+    if(id.startsWith('slideshow:'))return await require('./modules/community-studios').slideshowInteraction(i);
     if(id.startsWith('birthday:'))return await require('./modules/community-studios').onInteraction(i);
     if (id.startsWith('dev:')) return await developer.onInteraction(i);
     if (id.startsWith('ticket:')) return await tickets.onInteraction(i);

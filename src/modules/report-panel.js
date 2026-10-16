@@ -57,7 +57,7 @@ async function refreshPanels(client,onlyGuild,previousText){
       }
       for(const message of messages.values()){
         if(message.author.id!==client.user.id||!(message.content===saved.text||previousText&&message.content===previousText||message.components.some(row=>row.components?.some(c=>c.customId==='dev:report'||/^dev:(category|categories|level|custom):/.test(c.customId||'')))))continue;
-        await message.edit(require('./developer-wishes').combined((await require('../db').settings.get(guild.id)).developer));updated++;
+        await message.edit(await require('./discord-design').apply(guild.id,'developer',require('./developer-wishes').combined((await require('../db').settings.get(guild.id)).developer)));updated++;
         await require('./developer-audit').record(guild.id,0,client.user.id,'panel_updated',{channel:channelId,messageId:message.id});
       }
     }catch(error){console.warn('[fejlpanel]',error.code||error.name);}

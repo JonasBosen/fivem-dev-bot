@@ -6,7 +6,7 @@ const { embed, fill, memberVars, sendTo } = require('../util');
 const EPH = { flags: MessageFlags.Ephemeral };
 
 // ---------- Velkomst ----------
-async function welcomePayload(member,cfg){const vars=memberVars(member),e=embed(fill(cfg.title||'Velkommen til {server}',vars),fill(cfg.message,vars));if(cfg.showAvatar!==false)e.setThumbnail(member.user.displayAvatarURL());const payload=await require('./panel-media').decorate(member.guild.id,cfg,e,{content:cfg.mentionMember===false?'':('<@'+member.id+'>'),allowedMentions:{parse:[],users:cfg.mentionMember===false?[]:[member.id]}});if(cfg.imageOnly){delete payload.embeds;if(!cfg.mediaId)payload.content=(payload.content+' '+cfg.imageUrl).trim();}return payload;}
+async function welcomePayload(member,cfg){const vars=memberVars(member),e=embed(fill(cfg.title||'Velkommen til {server}',vars),fill(cfg.message,vars));if(cfg.showAvatar!==false)e.setThumbnail(member.user.displayAvatarURL());const payload=await require('./panel-media').decorate(member.guild.id,cfg,e,{content:cfg.mentionMember===false?'':('<@'+member.id+'>'),allowedMentions:{parse:[],users:cfg.mentionMember===false?[]:[member.id]}});if(cfg.imageOnly){delete payload.embeds;if(!cfg.mediaId)payload.content=(payload.content+' '+cfg.imageUrl).trim();}return require('./discord-design').apply(member.guild.id,'welcome',payload);}
 async function onJoin(member) {
   const cfg = (await settings.get(member.guild.id)).welcome;
   if (!cfg.enabled) return;
@@ -27,10 +27,10 @@ async function onLeave(member) {
 // ---------- Verificering ----------
 async function sendVerifyPanel(guild, channelId) {
   const cfg = (await settings.get(guild.id)).verification;
-  const msg = await sendTo(guild, channelId, {
+  const msg = await sendTo(guild, channelId, await require('./discord-design').apply(guild.id,'verification',{
     embeds: [embed(cfg.panelTitle, cfg.panelText)],
     components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('verify').setLabel('Verificér mig').setEmoji('✅').setStyle(ButtonStyle.Success))],
-  });
+  }));
   if (!msg) throw new Error('Kunne ikke sende panelet.');
   return msg;
 }

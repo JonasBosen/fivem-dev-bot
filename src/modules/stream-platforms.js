@@ -168,7 +168,7 @@ async function transition(guild,p,uid,source,forceDelete=false){
     }
     if(source&&(!previous||previous.sourceId!==source.id||previous.channelId!==cfg.channel)){
       const channel=await guild.channels.fetch(cfg.channel);if(!channel?.isTextBased())throw new Error('Vælg en tekstkanal');
-      const message=await channel.send({content:(cfg.pingRole?'<@&'+cfg.pingRole+'> ':'')+fill(cfg.message,source).slice(0,1850),allowedMentions:{parse:[],roles:cfg.pingRole?[cfg.pingRole]:[]}});
+      const message=await channel.send(await require('./discord-design').apply(guild.id,'stream',{content:(cfg.pingRole?'<@&'+cfg.pingRole+'> ':'')+fill(cfg.message,source).slice(0,1850),allowedMentions:{parse:[],roles:cfg.pingRole?[cfg.pingRole]:[]}}));
       await setState(guild.id,key,{messageId:message.id,channelId:channel.id,sourceId:source.id});
       await audit.record(guild.id,uid,'stream','stream_started',{platform:p,...source,messageId:message.id});
     }

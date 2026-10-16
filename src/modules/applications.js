@@ -10,7 +10,7 @@ async function sendPanel(guild, channelId) {
   const cfg = (await settings.get(guild.id)).applications;
   const forms=cfg.forms.filter(f=>f.enabled!==false).slice(0,25),rows=[];
   forms.forEach((f,i)=>{if(i%5===0)rows.push(new ActionRowBuilder());const button=new ButtonBuilder().setCustomId('app:start:'+f.id).setLabel((f.buttonLabel||'Ansøg: '+f.name).slice(0,80)).setStyle({blue:ButtonStyle.Primary,green:ButtonStyle.Success,red:ButtonStyle.Danger,gray:ButtonStyle.Secondary}[f.color]||ButtonStyle.Primary);if(f.emoji)button.setEmoji(f.emoji);rows.at(-1).addComponents(button);});
-  const msg=await sendTo(guild,channelId,await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),{components:rows}));
+  const msg=await sendTo(guild,channelId,await require('./discord-design').apply(guild.id,'applications',await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),{components:rows})));
   if (!msg) throw new Error('Kunne ikke sende panelet – tjek kanal og rettigheder.');
   return msg;
 }

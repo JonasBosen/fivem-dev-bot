@@ -29,7 +29,7 @@ function createPostgresAdapter(connection) {
     async close() { await connection.end?.(); },
   };
 }
-let adapter;
+let adapter;const settingsReads=new Map();
 async function initDb() {
   if (adapter) return;
   if (process.env.DATABASE_URL && !(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)) {
@@ -68,7 +68,7 @@ const db = {
     if (!adapter) throw new Error('Databasen er ikke klar.');
     return adapter.prepare(sql);
   },
-  async close() { await adapter?.close(); adapter = undefined; },
+  async close() { settingsReads.clear();await adapter?.close(); adapter = undefined; },
 };
 function merge(base, over) {
   if (Array.isArray(base) || typeof base !== 'object' || base === null) return over === undefined ? base : over;
@@ -81,15 +81,18 @@ function merge(base, over) {
 }
 const settings = {
   async get(guildId) {
-    const row = await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(guildId);
-    return merge(structuredClone(DEFAULTS), row ? JSON.parse(row.data) : {});
+    const cached=settingsReads.get(guildId);if(cached&&cached.until>Date.now())return structuredClone(await cached.promise);
+    const entry={until:Date.now()+1000,promise:null};entry.promise=(async()=>{const row=await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(guildId);return merge(structuredClone(DEFAULTS),row?JSON.parse(row.data):{});})();settingsReads.set(guildId,entry);
+    try{return structuredClone(await entry.promise);}catch(e){if(settingsReads.get(guildId)===entry)settingsReads.delete(guildId);throw e;}
   },
   async set(guildId, data) {
+    settingsReads.delete(guildId);
     const full = merge(structuredClone(DEFAULTS), data);
     await db.prepare('INSERT INTO settings (guild_id, data) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET data = excluded.data').run(guildId, JSON.stringify(full));
-    return full;
+    settingsReads.delete(guildId);return full;
   },
   async setModule(guildId, module, value) {
+    settingsReads.delete(guildId);
     if (!Object.hasOwn(DEFAULTS, module)) throw new Error('Ukendt modul');
     for(let attempt=0;attempt<10;attempt++){
       const row=await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(guildId);
@@ -97,7 +100,7 @@ const settings = {
       all[module]=merge(structuredClone(DEFAULTS[module]),value);
       const data=JSON.stringify(all);
       const result=row?await db.prepare('UPDATE settings SET data=? WHERE guild_id=? AND data=?').run(data,guildId,row.data):await db.prepare('INSERT INTO settings (guild_id, data) VALUES (?, ?) ON CONFLICT(guild_id) DO NOTHING').run(guildId,data);
-      if(result.changes)return all;
+      if(result.changes){settingsReads.delete(guildId);return all;}
     }
     throw new Error('Indstillingerne blev ændret samtidig. Prøv at gemme igen.');
   },

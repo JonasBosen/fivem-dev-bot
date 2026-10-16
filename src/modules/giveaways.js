@@ -21,7 +21,7 @@ async function start(guild, channelId, prize, durationMs, winners, hostId) {
   const info = (await db.prepare('INSERT INTO giveaways (guild_id, channel_id, prize, winners, ends_at, host_id) VALUES (?,?,?,?,?,?)')
     .run(guild.id, channelId, prize, winners, ends, hostId));
   const g = (await db.prepare('SELECT * FROM giveaways WHERE id=?').get(info.lastInsertRowid));
-  const msg = await sendTo(guild, channelId, { embeds: [gwEmbed(g, [])], components: [gwRow(g, 0)] });
+  const msg = await sendTo(guild, channelId, await require('./discord-design').apply(guild.id,'giveaways',{ embeds: [gwEmbed(g, [])], components: [gwRow(g, 0)] }));
   if (!msg) { (await db.prepare('DELETE FROM giveaways WHERE id=?').run(g.id)); throw new Error('Kunne ikke sende i kanalen.'); }
   (await db.prepare('UPDATE giveaways SET message_id=? WHERE id=?').run(msg.id, g.id));
   return g.id;
@@ -45,7 +45,7 @@ async function end(client, id, reroll = false) {
   const updated = (await db.prepare('SELECT * FROM giveaways WHERE id=?').get(id));
   const ch = guild.channels.cache.get(g.channel_id);
   const msg = ch && (await ch.messages.fetch(g.message_id).catch(() => null));
-  if (msg) await msg.edit({ embeds: [gwEmbed(updated, entries)], components: [gwRow(updated, entries.length)] }).catch(() => {});
+  if (msg) await msg.edit(await require('./discord-design').apply(guild.id,'giveaways',{ embeds: [gwEmbed(updated, entries)], components: [gwRow(updated, entries.length)] })).catch(() => {});
   await sendTo(guild, g.channel_id, winners.length
     ? `🎉 Tillykke ${winners.map((w) => `<@${w}>`).join(', ')}! I har vundet **${g.prize}**${reroll ? ' (reroll)' : ''}!`
     : `Ingen deltog i **${g.prize}** 😢`);
@@ -73,7 +73,7 @@ async function onInteraction(interaction) {
   const joined = entries.includes(interaction.user.id);
   entries = joined ? entries.filter((e) => e !== interaction.user.id) : [...entries, interaction.user.id];
   (await db.prepare('UPDATE giveaways SET entries=? WHERE id=?').run(JSON.stringify(entries), id));
-  await interaction.update({ embeds: [gwEmbed(g, entries)], components: [gwRow(g, entries.length)] });
+  await interaction.update(await require('./discord-design').apply(interaction.guild.id,'giveaways',{ embeds: [gwEmbed(g, entries)], components: [gwRow(g, entries.length)] }));
   return interaction.followUp({ content: joined ? 'Du er meldt fra.' : 'Du deltager nu! 🍀', ...EPH });
 }
 

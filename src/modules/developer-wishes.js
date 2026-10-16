@@ -10,7 +10,7 @@ async function sendPanel(guild,channelId){
  const own=[...messages.values()].filter(m=>m.author.id===guild.client.user.id),has=(m,prefix)=>m.components.some(r=>r.components?.some(c=>(c.customId||'').startsWith(prefix)));
  const existing=own.find(m=>has(m,'dev:custom:'))||own.find(m=>has(m,'dev:wish:'));
  if(existing&&existing.author.id!==guild.client.user.id)throw new Error('Panelet tilhører ikke denne bot');
- const message=existing?await existing.edit(combined(cfg)):await channel.send(combined(cfg));
+ const payload=await require('./discord-design').apply(guild.id,'developer',combined(cfg));const message=existing?await existing.edit(payload):await channel.send(payload);
  for(const old of own)if(old.id!==message.id&&has(old,'dev:wish:')&&!has(old,'dev:custom:'))await old.delete();
  const latest=(await settings.get(guild.id)).developer;await settings.setModule(guild.id,'developer',{...latest,wishPanelDelivery:{channel:channelId,messageId:message.id,combined:true}});
  await require('./developer-audit').record(guild.id,0,guild.client.user.id,'wish_panel_sent',{module:'wishPanel',board:'request',channel:channelId,messageId:message.id,updated:!!existing});return {ok:true,channel:channelId,messageId:message.id,updated:!!existing};

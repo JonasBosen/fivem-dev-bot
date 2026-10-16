@@ -30,8 +30,8 @@ function toast(msg, err) {
   setTimeout(() => d.remove(), 3500);
 }
 const run = (fn) => async (e) => {
-  const b = e?.currentTarget; if (b) b.disabled = true;
-  try { await fn(e); } catch (x) { toast(x.message, true); } finally { if (b) b.disabled = false; }
+  const target=e?.currentTarget,b=target?.matches?.('button')?target:target?.querySelector?.('button[type=submit]');if(b?.disabled)return;const wasDisabled=b?.disabled;if(b){b.disabled=true;b.setAttribute('aria-busy','true');b.classList.add('is-busy');}
+  try { await fn(e); } catch (x) { toast(x.message, true); } finally { if(b){b.disabled=wasDisabled;b.removeAttribute('aria-busy');b.classList.remove('is-busy');} }
 };
 const date = (t) => (t ? new Date(t).toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' }) : '–');
 const chName = (id) => G.channels.find((c) => c.id === id)?.name;
@@ -198,7 +198,7 @@ function settingsCard(mod, title) {
     h('div', { class: 'grid' }, SCHEMA[mod].map((f) => field(f, draft))),
     h('div', { class: 'actions' },
       h('button', { class: 'btn sec', onclick: () => { G.settings[mod] = structuredClone(G.defaults[mod]); route(); toast('Standard indlæst – husk at gemme'); } }, 'Nulstil'),
-      h('button', { class: 'btn', onclick: run(async () => { G.settings[mod] = await api(`/api/guild/${G.id}/settings/${mod}`, { method: 'PUT', body: draft }); toast('Gemt ✅'); }) }, 'Gem')));
+      h('button', { class: 'btn', onclick: run(async () => { G.settings[mod] = await api(`/api/guild/${G.id}/settings/${mod}`, { method: 'PUT', body: draft }); toast('Gemt ✅'); }) }, 'Gem')), ...(['verification','giveaways','stream'].includes(mod)?[renderDiscordDesigner(mod)]:[]));
 }
 
 function panelCard(type, text) {
@@ -219,7 +219,7 @@ const PAGES = [
 ];
 
 const pages = {
-  async staff(){return [h('div',{class:'staff-embedded-header'},h('h2',{},'Staff-panel'),h('button',{class:'btn sec sm',onclick:()=>document.querySelector('.staff-panel-frame')?.requestFullscreen?.()},'Vis i fuld skærm')),h('iframe',{class:'staff-panel-frame',src:'/staff-panel/',title:'Dream Network staff-panel',allow:'fullscreen',style:'width:100%;height:calc(100dvh - 180px);min-height:650px;border:1px solid var(--line);border-radius:12px;background:#080a0e'})];},
+  async staff(){return [h('div',{class:'staff-embedded-header'},h('button',{class:'btn sec sm',onclick:()=>document.querySelector('.staff-panel-frame')?.requestFullscreen?.()},'Vis i fuld skærm')),h('iframe',{class:'staff-panel-frame',src:'/staff-panel/',title:'Dream Network staff-panel',allow:'fullscreen',style:'width:100%;height:calc(100dvh - 180px);min-height:650px;border:1px solid var(--line);border-radius:12px;background:#080a0e'})];},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},

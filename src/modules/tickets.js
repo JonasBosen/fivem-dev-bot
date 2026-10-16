@@ -27,7 +27,7 @@ function panelPayload(cfg) {
 
 async function sendPanel(guild, channelId) {
   const cfg = (await settings.get(guild.id)).tickets;
-  const msg = await sendTo(guild, channelId, await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),panelPayload(cfg)));
+  const msg = await sendTo(guild, channelId, await require('./discord-design').apply(guild.id,'tickets',await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),panelPayload(cfg))));
   if (!msg) throw new Error('Kunne ikke sende panelet – tjek kanal og botens rettigheder.');
   return msg;
 }
