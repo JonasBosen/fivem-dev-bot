@@ -213,12 +213,13 @@ function panelCard(type, text) {
 
 // ---------- Sider ----------
 const PAGES = [
-  ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
+  ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['staff', '👥', 'Staff-panel'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
+  async staff(){return [h('div',{class:'staff-embedded-header'},h('h2',{},'Staff-panel'),h('button',{class:'btn sec sm',onclick:()=>document.querySelector('.staff-panel-frame')?.requestFullscreen?.()},'Vis i fuld skærm')),h('iframe',{class:'staff-panel-frame',src:'/staff-panel/',title:'Dream Network staff-panel',allow:'fullscreen',style:'width:100%;height:calc(100dvh - 180px);min-height:650px;border:1px solid var(--line);border-radius:12px;background:#080a0e'})];},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},

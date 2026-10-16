@@ -70,6 +70,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   // ---------- Adgangskontrol ----------
   const discordAuth=(req,res,next)=>req.session.user?next():res.status(401).json({error:'Log ind med Discord'});
   const auth=async(req,res,next)=>discordAuth(req,res,async()=>{try{const guild=client.guilds.cache.get(personal.targetId());if(!guild||req.params.gid&&req.params.gid!==guild.id)return res.status(403).json({error:'Denne hjemmeside tilhører Dream Network'});const identity=await personal.status(guild,req.session);if(!identity.eligible)return res.status(403).json({error:'Du mangler en adgangsgivende Discord-rolle'});if(!identity.unlocked)return res.status(428).json({error:'Log ind med din personlige kode'});req.panelIdentity=identity;req.guild=guild;next();}catch{res.status(503).json({error:'Adgangen kunne ikke kontrolleres'});}});
+  require('./staff-proxy').install(app,{auth,base:BASE});
   const ownerAccess=(req,res,next)=>req.panelIdentity?.owner?next():res.status(403).json({error:'Kun ejeren har adgang'});
   const guildAccess = async (req, res, next) => {
     try {
