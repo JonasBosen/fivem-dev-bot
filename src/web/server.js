@@ -34,9 +34,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     resave: false, saveUninitialized: false,
     cookie: { httpOnly: true, sameSite: 'lax', secure: BASE.startsWith('https'), maxAge: 7 * 864e5 },
   }));
-  const bridgeLimits=new Map();
-  app.post('/integrations/txadmin/:gid',async(req,res)=>{try{if(req.params.gid!==personal.targetId())return res.status(404).json({error:'Ukendt server'});const ip=req.ip,now=Date.now(),entry=bridgeLimits.get(ip);if(entry&&now-entry.at<60000){if(++entry.count>40)return res.status(429).json({error:'For mange hændelser'});}else{if(bridgeLimits.size>10000)bridgeLimits.clear();bridgeLimits.set(ip,{at:now,count:1});}const guild=client.guilds.cache.get(req.params.gid);if(!guild)return res.status(503).json({error:'Discord-forbindelsen er ikke klar'});const key=(req.get('authorization')||'').replace(/^Bearer /,'');await require('../modules/txadmin').receive(guild,key,req.body);res.json({ok:true});}catch(e){res.status(e.status||400).json({error:e.status===401?'Ugyldig forbindelsesnøgle':e.message});}});
 
+  app.all('/integrations/txadmin/:gid',(req,res)=>res.status(410).json({error:'FiveM / txAdmin er fjernet'}));
   // ---------- Login ----------
   app.get(['/login', '/auth/login'], (req, res) => {
     if (!databaseReady || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) return res.status(503).send('AllBot mangler opsætning. Tilføj DATABASE_URL, DISCORD_CLIENT_ID og DISCORD_CLIENT_SECRET i Render Environment.');
@@ -237,8 +236,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     return devAccess(req,res,next);
   };
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
-    if(['restart','levels'].includes(req.params.module))return res.status(404).json({error:'Genstartsmodulet er midlertidigt fjernet'});
-    if(req.params.module==='txadmin')return require('../modules/txadmin').configure(req.guild,req.body);
+    if(['restart','levels','txadmin'].includes(req.params.module))return res.status(404).json({error:'Modulet er fjernet fra panelet'});
     if(['birthdays','slideshow'].includes(req.params.module))return require('../modules/community-studios').configure(req.guild,req.params.module,req.body);
     if(req.params.module==='appearance'){const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}
     if(req.params.module==='welcome')req.body=require('../modules/panel-media').validate(req.body);
@@ -308,11 +306,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     await applications.review(req.guild, Number(req.params.aid), req.params.decision === 'accept', req.session.user.id);
   }));
 
+  app.use('/api/guild/:gid/txadmin',auth,(req,res)=>res.status(410).json({error:'FiveM / txAdmin er fjernet'}));
   app.get('/api/guild/:gid/members/events',auth,guildAccess,wrap(req=>require('../modules/members-panel').events(req.guild.id,req.query.before)));
-  app.get('/api/guild/:gid/txadmin',auth,guildAccess,wrap(async req=>({...require('../modules/txadmin').publicConfig((await settings.get(req.guild.id)).txadmin),endpoint:BASE+'/integrations/txadmin/'+req.guild.id})));
-  app.put('/api/guild/:gid/txadmin',auth,guildAccess,wrap(req=>require('../modules/txadmin').configure(req.guild,req.body)));
-  app.post('/api/guild/:gid/txadmin/key',auth,guildAccess,ownerAccess,wrap(req=>require('../modules/txadmin').rotate(req.guild.id)));
-  app.get('/api/guild/:gid/txadmin/resource',auth,guildAccess,(req,res)=>res.download(path.join(__dirname,'../../integrations/txadmin/allbot_txadmin.zip'),'allbot_txadmin.zip'));
   app.get('/api/guild/:gid/members/banned',auth,guildAccess,wrap(async req=>({members:await require('../modules/members-panel').bans(req.guild)})));
   app.get('/api/guild/:gid/members/departed',auth,guildAccess,wrap(req=>require('../modules/members-panel').departed(req.guild,req.query.before)));
   app.get('/api/guild/:gid/members',auth,guildAccess,wrap(req=>require('../modules/members-panel').list(req.guild,req.session.user.id,req.query.search,req.query.page)));

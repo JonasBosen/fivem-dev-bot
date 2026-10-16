@@ -213,14 +213,12 @@ function panelCard(type, text) {
 
 // ---------- Sider ----------
 const PAGES = [
-  ['txadmin','🎮','FiveM / txAdmin'],
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
-  async txadmin(){return renderTxAdmin();},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},
@@ -399,7 +397,7 @@ async function route() {
   if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&['restart','levels'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['restart','levels','txadmin'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
