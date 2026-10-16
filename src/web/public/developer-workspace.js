@@ -135,7 +135,7 @@ async function renderDeveloperWorkspace(isWishes=false) {
     drawState();
     const quickMove=h('select',{'aria-label':'Flyt sag til kolonne',onchange:run(async e=>{if(!e.target.value)return;await move(id,e.target.value);})},h('option',{value:''},'Flyt til kolonne…'),...columns.map(c=>h('option',{value:c.id},c.name)));
     const timer=h('button',{class:'btn sec',onclick:run(async()=>{if(planning.timerStartedAt){planning.spentHours=Math.round(((planning.spentHours||0)+(Date.now()-planning.timerStartedAt)/3600000)*100)/100;planning.timerStartedAt=0;}else planning.timerStartedAt=Date.now();setDirty();await save();await open(id,true);})},planning.timerStartedAt?'⏹ Stop timer og gem tid':'▶ Start arbejdstimer');
-    const actions=h('div',{class:'actions'},quickMove,timer,...['todo','doing','closed','rejected'].map(s=>h('button',{class:`btn sec status-${s}`,onclick:run(async()=>{draft.status=s;setDirty();drawState();await save();})},{todo:'Sæt som ikke taget',doing:'Tag opgaven',closed:'Afslut sag',rejected:'Afvis sag'}[s])));
+    const actions=h('div',{class:'actions'},quickMove,timer,h('button',{class:'btn sec',onclick:run(()=>openChangelogDialog(draft))},'📣 Udgiv som changelog'),...['todo','doing','closed','rejected'].map(s=>h('button',{class:`btn sec status-${s}`,onclick:run(async()=>{draft.status=s;setDirty();drawState();await save();})},{todo:'Sæt som ikke taget',doing:'Tag opgaven',closed:'Afslut sag',rejected:'Afvis sag'}[s])));
     const checklist=h('div'),progress=h('p',{class:'muted'});
     function drawChecks(){
       progress.textContent=`${draft.checklist.filter(c=>c.done).length} af ${draft.checklist.length} punkter udført`;
@@ -195,7 +195,7 @@ async function renderDeveloperWorkspace(isWishes=false) {
   })},'Opret og åbn opgave'));
 
   const logBody=h('div'),logCount=h('p',{class:'muted'});let nextLog=null,logLoaded=false,logLoading=false,loadedCount=0;
-  const labels={panel_sent:'Panel sendt til Discord',settings_updated:'Indstillinger ændret',created:'Sag oprettet',updated:'Sag ændret',rejected:'Sag afvist',deleted:'Sag slettet',comment:'Kommentar tilføjet',image_uploaded:'Billede vedhæftet'};
+  const labels={changelog_created:'Changelog-udkast oprettet',changelog_generated:'Changelog skrevet med AI',changelog_published:'Changelog udgivet til Discord',panel_sent:'Panel sendt til Discord',settings_updated:'Indstillinger ændret',created:'Sag oprettet',updated:'Sag ændret',rejected:'Sag afvist',deleted:'Sag slettet',comment:'Kommentar tilføjet',image_uploaded:'Billede vedhæftet'};
   const older=h('button',{class:'btn sec',onclick:run(()=>loadLogs(false))},'Hent ældre hændelser');older.hidden=true;
   async function loadLogs(reset){
     if(logLoading)return;logLoading=true;
@@ -241,11 +241,14 @@ async function renderDeveloperWorkspace(isWishes=false) {
   const escape=e=>{if(e.key==='Escape'){const last=[...windows.values()].at(-1);if(last&&!last.dirty){last.dispose();for(const [id,w]of windows)if(w===last)windows.delete(id);}}};window.addEventListener('keydown',escape);
   const beat=async(suspend=false)=>{if(!suspend&&document.hidden||!windowHost.isConnected)return;try{presence=await api(base+'/presence',{method:'POST',body:{active:!suspend},keepalive:suspend});drawPresence();}catch(e){if(e.status===423){clearInterval(heartbeatTimer);}}};const heartbeatTimer=setInterval(()=>beat(),30000);setTimeout(()=>beat(),0);const onVisibility=()=>beat(document.hidden),onPageHide=()=>beat(true);document.addEventListener('visibilitychange',onVisibility);window.addEventListener('pagehide',onPageHide);
   const previousCleanup=window.developerCleanup;previousCleanup?.();window.developerCleanup=()=>{beat(true);clearInterval(heartbeatTimer);document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('pagehide',onPageHide);window.removeEventListener('keydown',escape);window.removeEventListener('beforeunload',unload);for(const w of windows.values())w.dispose();layout.destroy();layoutMemory.destroy();};
+  const changelog=await changelogWorkspace();
+  const cleanup=window.developerCleanup;window.developerCleanup=()=>{changelog.dispose();cleanup?.();};
   draw();
   return [header,dashboardTabs([
     {id:'discord',icon:'⚙',label:'Discord & indstillinger',content:isWishes?[wishPanel,wishButtonBuilder,changePin]:[buttonBuilder,discord,changePin,...(!G.developerOnly?[settingsCard('developer','Adgang og roller')]:[])]},
     {id:'board',icon:'▦',label:'FiveM-arbejdstavle',badge:caseBadges.bug,onOpen:()=>switchBoard(false),content:isWishes?[]:[h('p',{class:'muted'},'Træk kolonnernes overskrifter for at placere dem frit på tavlen. Træk kort mellem kolonner eller oven på et andet kort for at ændre rækkefølgen. Flytninger gemmes med det samme. På mobil kan du åbne kortet og bruge statusknapperne.'),tools,columnEditor,newCard,board]},
     {id:'wishes',icon:'💡',label:'Ønsker til serveren',badge:caseBadges.request,onOpen:()=>switchBoard(true),content:isWishes?[tools,columnEditor,newCard,board]:[]},
+    {id:'changelog',icon:'📣',label:'Changelog',content:[changelog.element],onOpen:()=>changelog.load().catch(e=>toast(e.message,true))},
     {id:'calendar',icon:'◷',label:'Kalender',content:[calendar.element]},
     {id:'list',icon:'☷',label:'Sagsliste',content:[list]},
     {id:'registry',icon:'🗂',label:'Serverregister',content:[registry.element],onOpen:()=>registry.load().catch(e=>toast(e.message,true))},

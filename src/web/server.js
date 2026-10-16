@@ -136,6 +136,13 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/guild/:gid/developer-access/:action',auth,devRoleAccess,wrap(async req=>{
     if(req.params.action==='lock'){delete req.session.devGate;return {ok:true};}if(req.params.action==='unlock')return require('../modules/developer-gate').unlock(req.guild,req.session,req.body.pin,req.ip);throw new Error('Ukendt handling');
   }));
+  const changelog=require('../modules/developer-changelog');
+  app.get('/api/guild/:gid/developer/changelog',auth,devAccess,wrap(async req=>({ai:changelog.aiStatus(),config:await changelog.config(req.guild),drafts:await changelog.list(req.guild.id)})));
+  app.post('/api/guild/:gid/developer/changelog/drafts',auth,devAccess,wrap(req=>changelog.create(req.guild,req.session.user.id,req.body)));
+  app.put('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.save(req.guild,req.session.user.id,req.params.draftId,req.body)));
+  app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/generate',auth,devAccess,wrap(req=>changelog.generate(req.guild,req.session.user.id,req.params.draftId,req.body)));
+  app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/publish',auth,devAccess,wrap(req=>changelog.publish(req.guild,req.session.user.id,req.params.draftId,req.body)));
+  app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/reconcile',auth,devAccess,wrap(req=>changelog.reconcile(req.guild,req.session.user.id,req.params.draftId)));
   app.post('/api/guild/:gid/developer/:id/files',auth,devAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/developer-files').upload(req.guild.id,Number(req.params.id),req.session.user.id,req.body)));
   app.get('/api/guild/:gid/developer/:id/files/:fid',auth,devAccess,wrap(async(req,res)=>{
     const image=await db.prepare('SELECT mime,content FROM dev_files WHERE guild_id=? AND task_id=? AND id=?').get(req.guild.id,req.params.id,req.params.fid);
