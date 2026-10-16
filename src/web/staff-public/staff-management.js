@@ -24,7 +24,7 @@
   document.head.appendChild(style);
 
   page.innerHTML = '<div class="title"><div><h1>👔 Staff Ansatte</h1><p class="muted">Ansæt, fyr og håndter staff direkte via Discord.</p></div><button id="hireStaff">➕ Ansæt staff</button></div>' +
-    '<div class="card staff-management-card"><div class="staff-toolbar"><input id="staffSearch" placeholder="🔎 Søg navn, brugernavn eller Discord ID"><button class="gray" id="refreshStaff">↻ Opdater</button><button class="gray" id="lockStaff">🔒 Lås ændringer</button></div><div id="staffGroups" class="staff-groups"></div></div>' +
+    '<div class="card staff-management-card"><div class="staff-toolbar"><input id="staffSearch" placeholder="🔎 Søg navn, brugernavn eller Discord ID"><button class="gray" id="refreshStaff">↻ Opdater</button></div><div id="staffGroups" class="staff-groups"></div></div>' +
     '<div class="card staff-management-card"><h2>⚠️ Staff-advarsler</h2><div id="staffWarningBox" class="staff-empty">Vælg en staff for at se advarsler.</div></div>' +
     '<div class="card staff-management-card"><div class="title"><h2>📜 Staff historik</h2><button class="gray" id="refreshHistory">↻ Opdater</button></div><div id="staffHistory"></div></div>';
 
@@ -137,14 +137,9 @@
   }
 
   async function unlock() {
-    if (unlocked) return true;
-    const code = prompt('🔐 Skriv den 4-cifrede kode for Staff-ændringer:');
-    if (code === null) return false;
-    if (!/^\d{4}$/.test(code)) { alert('Koden skal være præcis 4 cifre.'); return false; }
     try {
-      await api('/api/staff-management/unlock', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code}) });
-      unlocked = true;
-      document.getElementById('lockStaff').textContent = '🔓 Ændringer låst op';
+      const status = await api('/api/staff-management/edit-status');
+      if (status.unlocked !== true) throw Error('Din staff-adgang kunne ikke bekræftes. Genindlæs siden.');
       return true;
     } catch (error) { alert(error.message); return false; }
   }
@@ -207,7 +202,6 @@
   document.getElementById('refreshStaff').onclick = load;
   document.getElementById('refreshHistory').onclick = loadHistory;
   document.getElementById('hireStaff').onclick = hire;
-  document.getElementById('lockStaff').onclick = async () => { try { await api('/api/staff-management/lock',{method:'POST'}); } catch (_) {} unlocked=false; document.getElementById('lockStaff').textContent='🔒 Lås ændringer'; };
 
   load();
   loadHistory();
