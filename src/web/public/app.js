@@ -94,6 +94,7 @@ function field(f, obj) {
     default:
       input = h('input', { type: 'text', value: v ?? '', placeholder: f.ph, oninput: (e) => set(e.target.value) });
   }
+  if(f.k.toLowerCase().includes('emoji')&&input.tagName==='INPUT')input=emojiField(input,value=>{set(value);});
   const wide = f.t === 'textarea' || f.t === 'list' || f.wide;
   return h('label', { class: `f${wide ? ' full' : ''}` }, h('span', {}, f.l), input, f.hint && h('small', {}, f.hint));
 }
@@ -108,7 +109,7 @@ const SCHEMA = {
     {k:'allowCitizenClose',t:'toggle',l:'Borgeren må selv lukke sin sag'},
     { k: 'maxOpenPerUser', t: 'number', l: 'Maks åbne tickets pr. bruger', min: 1 },
     { k: 'categoryId', t: 'category', l: 'Kategori nye tickets oprettes i' },
-    { k: 'logChannel', t: 'channel', l: 'Log-kanal (transcripts sendes hertil)' },
+    { k: 'logChannel', t: 'channel', l: 'Privat support-logkanal (ingen HTML-filer eller private beskeder)' },
     { k: 'supportRoles', t: 'roles', l: 'Support-roller', wide: true },
     { k: 'panelTitle', l: 'Panel: titel' },
     { k: 'panelText', t: 'textarea', l: 'Panel: tekst' },
@@ -213,12 +214,14 @@ function panelCard(type, text) {
 
 // ---------- Sider ----------
 const PAGES = [
+  ['staff','🛡️','Staff-panel'],
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
+  async staff(){return renderStaffCenter();},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},
@@ -374,7 +377,7 @@ async function route() {
   if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&['restart','levels','txadmin','staff','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['restart','levels','txadmin','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {

@@ -38,6 +38,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] Logget ind som ${c.user.tag} på ${c.guilds.cache.size} servere`);
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
+  require('./modules/staff-center').start(c);
   giveaways.startTimer(c);
   require('./modules/prize-wheel').start(c);
   stream.startPolling(c);
@@ -101,3 +102,10 @@ runtime.start().catch(error=>console.error('[start]',error.code||error.name));
 let stopping=false;async function shutdown(){if(stopping)return;stopping=true;runtime.stop();const deadline=setTimeout(()=>process.exit(0),10000);deadline.unref();server.close();await client.destroy();await db.close();clearTimeout(deadline);process.exit(0);}
 process.once('SIGTERM',()=>shutdown().catch(()=>process.exit(1)));
 process.once('SIGINT',()=>shutdown().catch(()=>process.exit(1)));
+
+client.on(Events.GuildMemberAdd,m=>require('./modules/staff-center').onMember(m,'joined').catch(e=>console.warn('[staff]',e.code||e.name)));
+client.on(Events.GuildMemberRemove,m=>require('./modules/staff-center').onMember(m,'left').catch(e=>console.warn('[staff]',e.code||e.name)));
+client.on(Events.GuildMemberUpdate,(_,m)=>require('./modules/staff-center').onMember(m,'updated').catch(e=>console.warn('[staff]',e.code||e.name)));
+client.on(Events.GuildBanAdd,b=>require('./modules/staff-center').onBan(b).catch(e=>console.warn('[staff]',e.code||e.name)));
+client.on(Events.GuildBanRemove,b=>require('./modules/staff-center').onBan(b,true).catch(e=>console.warn('[staff]',e.code||e.name)));
+client.on(Events.GuildAuditLogEntryCreate,(e,g)=>require('./modules/staff-center').onAudit(e,g).catch(e=>console.warn('[staff]',e.code||e.name)));

@@ -329,6 +329,18 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
 
   app.use('/api/guild/:gid/txadmin',auth,(req,res)=>res.status(410).json({error:'FiveM / txAdmin er fjernet'}));
+  const staff=require('../modules/staff-center');
+  app.get('/api/guild/:gid/staff',auth,guildAccess,wrap(req=>staff.directory(req.guild,req.session.user.id)));
+  app.post('/api/guild/:gid/staff/sync',auth,guildAccess,wrap(req=>staff.sync(req.guild,true)));
+  app.get('/api/guild/:gid/staff/history',auth,guildAccess,wrap(req=>staff.actions(req.guild.id)));
+  app.get('/api/guild/:gid/staff/warnings',auth,guildAccess,wrap(req=>staff.warnings(req.guild.id)));
+  app.put('/api/guild/:gid/staff/config',auth,guildAccess,wrap(req=>staff.saveConfig(req.guild,req.session.user.id,req.body)));
+  app.get('/api/guild/:gid/staff/people/:uid',auth,guildAccess,wrap(req=>staff.detail(req.guild,req.session.user.id,req.params.uid)));
+  app.put('/api/guild/:gid/staff/people/:uid',auth,guildAccess,wrap(req=>staff.savePerson(req.guild,req.session.user.id,req.params.uid,req.body)));
+  app.post('/api/guild/:gid/staff/people/:uid/:action',auth,guildAccess,wrap(req=>staff.moderate(req.guild,req.session.user.id,req.params.uid,req.params.action,req.body)));
+  app.put('/api/guild/:gid/staff/people/:uid/roles/:rid',auth,guildAccess,wrap(req=>staff.role(req.guild,req.session.user.id,req.params.uid,req.params.rid,true)));
+  app.delete('/api/guild/:gid/staff/people/:uid/roles/:rid',auth,guildAccess,wrap(req=>staff.role(req.guild,req.session.user.id,req.params.uid,req.params.rid,false)));
+  app.post('/api/guild/:gid/staff/warnings/:wid/revoke',auth,guildAccess,wrap(req=>staff.revokeWarning(req.guild,req.session.user.id,req.params.wid,req.body.reason)));
   app.get('/api/guild/:gid/members/events',auth,guildAccess,wrap(req=>require('../modules/members-panel').events(req.guild.id,req.query.before)));
   app.get('/api/guild/:gid/members/banned',auth,guildAccess,wrap(async req=>({members:await require('../modules/members-panel').bans(req.guild)})));
   app.get('/api/guild/:gid/members/departed',auth,guildAccess,wrap(req=>require('../modules/members-panel').departed(req.guild,req.query.before)));
