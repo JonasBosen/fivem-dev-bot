@@ -400,12 +400,13 @@ async function route() {
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&['restart','levels'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&page==='logs'){sessionStorage.setItem('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
+  if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
     if (!G || G.id !== gid) G = await api(`/api/guild/${gid}`);
   } catch (e) { toast(e.message, true); location.hash = ''; return; }
   if (G.developerOnly && !['developer','developer-wishes','account','appearance'].includes(page)) { location.hash = '#/g/'+gid+'/developer'; return; }
+  try{await personalInterface(gid,me.user.id);}catch(e){$app.replaceChildren(h('div',{class:'center'},h('div',{class:'card'},h('h2',{},'Opsætningen kunne ikke hentes'),h('p',{},e.message),h('button',{class:'btn',onclick:()=>route()},'Prøv igen'))));return;}
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),

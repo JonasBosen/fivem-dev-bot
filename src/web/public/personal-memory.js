@@ -1,0 +1,16 @@
+async function personalMemory(gid,uid,board,legacy){
+ const url='/api/guild/'+gid+'/my-workspace/'+board,key='personal-memory-pending:'+gid+':'+uid+':'+board,cloud=await api(url);if(!Number.isInteger(cloud.revision)||!cloud.state)throw new Error('Din gemte opsætning kunne ikke hentes. Prøv igen; den bliver ikke erstattet med standarden.');
+ let pending={};try{pending=JSON.parse(localStorage.getItem(key))||{};}catch{}let state=structuredClone(cloud.state),timer,inflight,sent,destroyed=false,status='Opsætning gemt i databasen',listeners=new Set();
+ function merge(a,b){const out=structuredClone(b.reset?(board==='ui'?{tabs:{}}:{locked:false,windows:{},lanes:{},laneOrder:[]}):a);for(const k of ['locked','laneOrder','reset'])if(b[k]!==undefined)out[k]=b[k];for(const type of ['windows','lanes','tabs'])if(b[type]){out[type]||={};for(const [id,value]of Object.entries(b[type]))out[type][id]=type==='tabs'?value:{...out[type][id],...value};}return out;}
+ function report(text){status=text;for(const fn of listeners)fn(status);}
+ function cache(){try{localStorage.setItem(key,JSON.stringify(sent?merge(sent,pending):pending));}catch{}}
+ if(cloud.revision===0&&legacy&&Object.keys(legacy).length)pending=merge(legacy,pending);
+ if(Object.keys(pending).length){state=merge(state,pending);cache();timer=setTimeout(()=>flush(),0);}
+ function update(patch){state=merge(state,patch);pending=merge(pending,patch);cache();report('Gemmer din opsætning…');clearTimeout(timer);timer=setTimeout(()=>flush(),400);}
+ async function flush(){clearTimeout(timer);if(inflight||!Object.keys(pending).length)return inflight;const patch=pending;sent=patch;pending={};cache();report('Gemmer din opsætning…');inflight=(async()=>{try{await api(url,{method:'PUT',body:patch,keepalive:JSON.stringify(patch).length<55000});sent=null;cache();report('Opsætning gemt i databasen');}catch{pending=merge(patch,pending);sent=null;cache();report('Opsætningen kunne ikke gemmes – prøver igen');}finally{inflight=null;if(Object.keys(pending).length&&!destroyed)timer=setTimeout(()=>flush(),15000);}})();return inflight;}
+ const hide=()=>flush(),online=()=>flush();window.addEventListener('pagehide',hide);window.addEventListener('online',online);
+ return {get state(){return state;},update,flush,subscribe(fn){listeners.add(fn);fn(status);return ()=>listeners.delete(fn);},destroy(){destroyed=true;flush();window.removeEventListener('pagehide',hide);window.removeEventListener('online',online);listeners.clear();}};
+}
+async function personalInterface(gid,uid){const identity=gid+':'+uid;if(window.personalInterfaceId===identity)return;window.personalInterfaceStore?.destroy();const legacy={tabs:{}};try{for(let i=0;i<sessionStorage.length;i++){const k=sessionStorage.key(i);if(k.startsWith('section:'+gid))legacy.tabs[k]=sessionStorage.getItem(k);}}catch{}window.personalInterfaceStore=await personalMemory(gid,uid,'ui',Object.keys(legacy.tabs).length?legacy:null);window.personalInterfaceId=identity;}
+function panelTabGet(key){return window.personalInterfaceStore?.state.tabs?.[key]??sessionStorage.getItem(key);}
+function panelTabSet(key,value){try{sessionStorage.setItem(key,value);}catch{}const store=window.personalInterfaceStore;if(store&&store.state.tabs?.[key]!==value)store.update({tabs:{[key]:value}});}

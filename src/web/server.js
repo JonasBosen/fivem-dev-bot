@@ -111,6 +111,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/access/change',auth,wrap(req=>personal.change(accessGuild(),req.session,req.body.old,req.body.password,req.body.confirm,req.ip)));
   app.post('/api/access/lock',discordAuth,wrap(req=>personal.lock(accessGuild().id,req.session)));
   const appearanceKey=req=>'personal-appearance:'+req.guild.id+':'+req.session.user.id;
+  app.get('/api/guild/:gid/my-workspace/:board',auth,wrap(req=>require('../modules/personal-workspace').read(req.guild.id,req.session.user.id,req.params.board)));
+  app.put('/api/guild/:gid/my-workspace/:board',auth,wrap(req=>require('../modules/personal-workspace').update(req.guild.id,req.session.user.id,req.params.board,req.body)));
   const myAppearance=async req=>{const row=await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(appearanceKey(req));if(row)return JSON.parse(row.data).appearance;return req.panelIdentity.owner?(await settings.get(req.guild.id)).appearance:require('../modules/appearance').defaults;};
   app.put('/api/guild/:gid/my-appearance',auth,wrap(async req=>{const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}));
   app.get('/api/access/users',auth,ownerAccess,wrap(()=>personal.users(accessGuild().id)));

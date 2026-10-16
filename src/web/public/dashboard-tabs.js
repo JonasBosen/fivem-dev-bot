@@ -1,12 +1,12 @@
 function dashboardTabs(sections,key,initial) {
   const root=h('div',{class:'dashboard-sections'}),nav=h('div',{class:'section-nav',role:'tablist','aria-label':'Områder i kategorien'});
   const panels=sections.map((s,i)=>h('section',{class:'section-panel',role:'tabpanel',id:`section-${key}-${i}`},...(Array.isArray(s.content)?s.content:[s.content])));
-  let stored;try{stored=sessionStorage.getItem('section:'+key);}catch{}
+  let stored;try{stored=panelTabGet('section:'+key);}catch{}
   let active=sections.findIndex(s=>s.id===(stored||initial));if(active<0)active=0;
   function select(index){
     panels.forEach((p,i)=>p.hidden=i!==index);
     [...nav.children].forEach((b,i)=>{b.classList.toggle('active',i===index);b.setAttribute('aria-selected',String(i===index));b.tabIndex=i===index?0:-1;});
-    try{sessionStorage.setItem('section:'+key,sections[index].id);}catch{}
+    try{panelTabSet('section:'+key,sections[index].id);}catch{}
     sections[index].onOpen?.();
   }
   sections.forEach((s,i)=>nav.append(h('button',{type:'button',role:'tab','aria-controls':panels[i].id,onclick:()=>select(i),onkeydown:e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const n=(i+(e.key==='ArrowRight'?1:-1)+sections.length)%sections.length;select(n);nav.children[n].focus();}}},h('span',{class:'section-icon'},s.icon||'◈'),h('span',{},s.label))));

@@ -91,9 +91,15 @@ const settings = {
   },
   async setModule(guildId, module, value) {
     if (!Object.hasOwn(DEFAULTS, module)) throw new Error('Ukendt modul');
-    const all = await settings.get(guildId);
-    all[module] = merge(structuredClone(DEFAULTS[module]), value);
-    return settings.set(guildId, all);
+    for(let attempt=0;attempt<10;attempt++){
+      const row=await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(guildId);
+      const all=merge(structuredClone(DEFAULTS),row?JSON.parse(row.data):{});
+      all[module]=merge(structuredClone(DEFAULTS[module]),value);
+      const data=JSON.stringify(all);
+      const result=row?await db.prepare('UPDATE settings SET data=? WHERE guild_id=? AND data=?').run(data,guildId,row.data):await db.prepare('INSERT INTO settings (guild_id, data) VALUES (?, ?) ON CONFLICT(guild_id) DO NOTHING').run(guildId,data);
+      if(result.changes)return all;
+    }
+    throw new Error('Indstillingerne blev ændret samtidig. Prøv at gemme igen.');
   },
 };
 module.exports = { db, settings, initDb, createPostgresAdapter, postgresSql };
