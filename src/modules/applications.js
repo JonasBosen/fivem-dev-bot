@@ -1,97 +1,29 @@
-// Ansøgninger / formularer (inspireret af Appy / Tickety):
-// panel med knap pr. formular → spørgsmål i en popup → svar til review-kanal med Accepter/Afvis.
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
-const { db, settings } = require('../db');
-const { embed, isAdmin, sendTo } = require('../util');
-
-const EPH = { flags: MessageFlags.Ephemeral };
-
-async function sendPanel(guild, channelId) {
-  const cfg = (await settings.get(guild.id)).applications;
-  const forms=cfg.forms.filter(f=>f.enabled!==false).slice(0,25),rows=[];
-  forms.forEach((f,i)=>{if(i%5===0)rows.push(new ActionRowBuilder());const button=new ButtonBuilder().setCustomId('app:start:'+f.id).setLabel((f.buttonLabel||'Ansøg: '+f.name).slice(0,80)).setStyle({blue:ButtonStyle.Primary,green:ButtonStyle.Success,red:ButtonStyle.Danger,gray:ButtonStyle.Secondary}[f.color]||ButtonStyle.Primary);if(f.emoji)button.setEmoji(f.emoji);rows.at(-1).addComponents(button);});
-  const msg=await sendTo(guild,channelId,await require('./discord-design').apply(guild.id,'applications',await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),{components:rows})));
-  if (!msg) throw new Error('Kunne ikke sende panelet – tjek kanal og rettigheder.');
-  return msg;
+const {ActionRowBuilder,ButtonBuilder,ButtonStyle,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,LabelBuilder,StringSelectMenuBuilder}=require('discord.js');
+const {db,settings}=require('../db'),{embed,isAdmin,sendTo}=require('../util'),state=require('./durable-state'),rules=require('./application-rules');
+const EPH={flags:MessageFlags.Ephemeral};
+const sessionKey=(g,u,f)=>'application-session:'+g+':'+u+':'+f;
+const metaKey=(g,id)=>'application-meta:'+g+':'+id;
+async function formFor(gid,id){const cfg=(await settings.get(gid)).applications;const form=cfg.forms.find(f=>f.id===id);if(!form)throw Error('Formularen findes ikke');return {cfg,form};}
+function reviewRow(id,disabled=false){return new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('app:accept:'+id).setLabel('Accepter').setStyle(ButtonStyle.Success).setDisabled(disabled),new ButtonBuilder().setCustomId('app:deny:'+id).setLabel('Afvis').setStyle(ButtonStyle.Danger).setDisabled(disabled));}
+async function sendPanel(guild,channelId,ids){if(ids&&(!Array.isArray(ids)||ids.length>25))throw Error('Vælg højst 25 formularer til én Discord-besked');const cfg=(await settings.get(guild.id)).applications,forms=cfg.forms.filter(f=>f.enabled!==false&&(!ids||ids.includes(f.id))).slice(0,25),rows=[];if(!forms.length)throw Error('Der er ingen åbne formularer at sende');for(const [i,f]of forms.entries()){if(i%5===0)rows.push(new ActionRowBuilder());const b=new ButtonBuilder().setCustomId('app:start:'+f.id).setLabel((f.buttonLabel||'Ansøg: '+f.name).slice(0,80)).setStyle({blue:1,green:3,red:4,gray:2}[f.color]||1);if(f.emoji)b.setEmoji(f.emoji);rows.at(-1).addComponents(b);}const msg=await sendTo(guild,channelId,await require('./discord-design').apply(guild.id,'applications',await require('./panel-media').decorate(guild.id,cfg,embed(cfg.panelTitle,cfg.panelText),{components:rows})));if(!msg)throw Error('Panelet kunne ikke sendes. Kontrollér kanal og rettigheder.');return msg;}
+async function begin(guild,uid,fid,method='discord'){return state.serial(sessionKey(guild.id,uid,fid),async()=>{const {form}=await formFor(guild.id,fid),member=await guild.members.fetch(uid);rules.checkAccess(form,member);if(form.method==='discord'&&method==='web')throw Error('Denne formular udfyldes i Discord');if(form.method==='web'&&method!=='web')throw Error('Brug formularens webadresse');if(form.method==='dm'&&method!=='dm')throw Error('Denne formular udfyldes i private beskeder');const pending=await db.prepare("SELECT id FROM applications WHERE guild_id=? AND user_id=? AND form_id=? AND status='pending'").get(guild.id,uid,fid);if(pending)throw Error('Du har allerede en ansøgning, der afventer svar');const key=sessionKey(guild.id,uid,fid),old=await state.read(key,{});if(old.submittedAt&&Date.now()-old.submittedAt<Number(form.cooldownMinutes||0)*60000)throw Error('Du skal vente lidt, før du kan ansøge igen');if(old.active&&old.expiresAt>Date.now())return old;const now=Date.now();return state.write(key,()=>({active:true,startedAt:now,expiresAt:now+Math.max(1,Number(form.timeLimitMinutes??180))*60000,answers:[],page:0,formSnapshot:form,submittedAt:old.submittedAt||0}),{});});}
+async function session(gid,uid,fid){const s=await state.read(sessionKey(gid,uid,fid),{});if(!s.active||s.expiresAt<Date.now())throw Error('Ansøgningen er udløbet. Start den igen.');const {form}=await formFor(gid,fid);if(form.enabled===false)throw Error('Ansøgningen er lukket');return s;}
+function continueRow(gid,fid,page){return new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('app:continue:'+gid+':'+fid+':'+page).setLabel('Fortsæt ansøgning').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('app:cancel:'+gid+':'+fid).setLabel('Annuller').setStyle(ButtonStyle.Danger));}
+async function showPage(i,guild,fid,page){const s=await session(guild.id,i.user.id,fid);if(page!==s.page)throw Error('Denne side er allerede besvaret. Brug den nyeste Fortsæt-knap.');const qs=rules.questions(s.formSnapshot),modal=new ModalBuilder().setCustomId('app:page:'+guild.id+':'+fid+':'+page).setTitle((s.formSnapshot.name+' · '+(page+1)+'/'+Math.ceil(qs.length/5)).slice(0,45));for(let j=page*5;j<Math.min(qs.length,page*5+5);j++){const q=qs[j],label=new LabelBuilder().setLabel(q.label.slice(0,45));if(q.label.length>45)label.setDescription(q.label.slice(45,145));if(['choice','multiple'].includes(q.type)){const select=new StringSelectMenuBuilder().setCustomId('q'+j).setRequired(q.required!==false).setMinValues(q.required===false?0:1).setMaxValues(q.type==='multiple'?q.options.length:1).addOptions(q.options.map((v,k)=>({label:v,value:String(k)})));label.setStringSelectMenuComponent(select);}else{label.setTextInputComponent(new TextInputBuilder().setCustomId('q'+j).setStyle(q.type==='text'?TextInputStyle.Paragraph:TextInputStyle.Short).setRequired(q.required!==false).setMinLength(Number(q.minLength||0)).setMaxLength(Number(q.maxLength||4000)));}modal.addLabelComponents(label);}return i.showModal(modal);}
+async function saveDraft(guild,uid,fid,answers){return state.serial(sessionKey(guild.id,uid,fid),async()=>{const s=await session(guild.id,uid,fid),qs=rules.questions(s.formSnapshot);if(!Array.isArray(answers)||answers.length!==qs.length||JSON.stringify(answers).length>450000)throw Error('Ugyldig kladde');const safe=qs.map((q,j)=>rules.validateAnswer({...q,required:false,minLength:0},answers[j]));await state.write(sessionKey(guild.id,uid,fid),v=>({...v,answers:safe}));return {ok:true};});}
+async function updateRoles(member,add,remove){if(add.length)await member.roles.add(add);const actual=remove.filter(r=>!add.includes(r));if(actual.length)await member.roles.remove(actual);}
+async function list(gid){const [rows,metadata]=await Promise.all([db.prepare('SELECT * FROM applications WHERE guild_id=? ORDER BY id DESC LIMIT 200').all(gid),db.prepare('SELECT guild_id,data FROM settings WHERE guild_id LIKE ?').all('application-meta:'+gid+':%')]);const map=new Map(metadata.map(r=>[r.guild_id,JSON.parse(r.data)]));return rows.map(r=>({...r,answers:JSON.parse(r.answers||'[]'),metadata:map.get(metaKey(gid,r.id))||{}}));}
+async function delivery(guild,id){const row=await db.prepare('SELECT * FROM applications WHERE id=? AND guild_id=?').get(id,guild.id);if(!row)return;const meta=await state.read(metaKey(guild.id,id),{});if(!meta.form)return;require('./application-notion').sync(guild.id,row).catch(()=>{});const form=meta.form,accepted=row.status==='accepted',pending=row.status==='pending';const chId=pending?(form.reviewChannel||(await settings.get(guild.id)).applications.reviewChannel):accepted?form.acceptedChannel:form.deniedChannel;
+const e=embed('Ansøgning #'+id+': '+form.name,'Fra <@'+row.user_id+'> · '+({pending:'Afventer behandling',accepted:'Accepteret',denied:'Afvist'}[row.status]),pending?0x5865f2:accepted?0x57f287:0xed4245);if(!form.hideAnswers){const qs=rules.questions(form);e.addFields(qs.slice(0,15).map((q,j)=>({name:q.label.slice(0,256),value:String((JSON.parse(row.answers)[j])||'—').slice(0,200)})));if(qs.length>15)e.setFooter({text:'Alle '+qs.length+' svar kan læses i ansøgningspanelet.'});}if(form.showStats)e.setDescription(e.data.description+'\nUdfyldt på '+Math.max(1,Math.round((row.created_at-meta.startedAt)/60000))+' minutter.');
+if(pending){if(!row.message_id){if(!chId)throw Error('Vælg en kanal til afventende ansøgninger');const pings=rules.roles(form,'pingRoles'),msg=await sendTo(guild,chId,{content:pings.map(r=>'<@&'+r+'>').join(' '),embeds:[e],components:[reviewRow(id)],allowedMentions:{roles:pings,users:[],parse:[]}});if(!msg)throw Error('Ansøgningen er gemt, men review-kanalen kan ikke nås. Prøv levering igen i panelet.');await db.prepare('UPDATE applications SET message_id=?, channel_id=? WHERE id=?').run(msg.id,msg.channelId,id);if(form.staffThreads&&msg.startThread)await msg.startThread({name:('Ansøgning #'+id+' · '+form.name).slice(0,100),autoArchiveDuration:1440}).catch(()=>{});}}
+else{const source=await guild.channels.fetch(row.channel_id).catch(()=>null),msg=source?.messages&&await source.messages.fetch(row.message_id).catch(()=>null);if(msg)await msg.edit({embeds:[e],components:[reviewRow(id,true)]});if(chId&&!meta.resultDelivered){const sent=await sendTo(guild,chId,{embeds:[e],allowedMentions:{parse:[]}});if(!sent)throw Error('Resultatkanalen kunne ikke nås');await state.write(metaKey(guild.id,id),s=>({...s,resultDelivered:true}));}}
 }
-
-async function showForm(interaction, formId) {
-  const cfg = (await settings.get(interaction.guild.id)).applications;
-  const form = cfg.forms.find((f) => f.id === formId);
-  if (!form||form.enabled===false) return interaction.reply({ content: 'Formularen findes ikke.', ...EPH });
-  if(form.requiredRole&&!interaction.member.roles.cache.has(form.requiredRole))return interaction.reply({content:'Du mangler den krævede rolle til denne ansøgning.',...EPH});
-  if(form.minAccountAgeDays&&(Date.now()-interaction.user.createdTimestamp)/86400000<form.minAccountAgeDays)return interaction.reply({content:'Din Discord-konto er for ny til denne ansøgning.',...EPH});
-  const pending = (await db.prepare("SELECT id FROM applications WHERE guild_id=? AND user_id=? AND form_id=? AND status='pending'").get(interaction.guild.id, interaction.user.id, form.id));
-  if (pending) return interaction.reply({ content: 'Du har allerede en ansøgning der afventer svar.', ...EPH });
-  const modal = new ModalBuilder().setCustomId(`app:modal:${form.id}`).setTitle(`Ansøgning: ${form.name}`.slice(0, 45));
-  form.questions.filter(Boolean).slice(0, 5).forEach((q, i) => modal.addComponents(new ActionRowBuilder().addComponents(
-    new TextInputBuilder().setCustomId(`q${i}`).setLabel(q.slice(0, 45)).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000))));
-  return interaction.showModal(modal);
-}
-
-function reviewRow(id, disabled = false) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`app:accept:${id}`).setLabel('Accepter').setStyle(ButtonStyle.Success).setDisabled(disabled),
-    new ButtonBuilder().setCustomId(`app:deny:${id}`).setLabel('Afvis').setStyle(ButtonStyle.Danger).setDisabled(disabled),
-  );
-}
-
-async function review(guild, appId, accepted, reviewerId) {
-  const app = (await db.prepare('SELECT * FROM applications WHERE id=? AND guild_id=?').get(appId, guild.id));
-  if (!app || app.status !== 'pending') throw new Error('Ansøgningen er allerede behandlet.');
-  const cfg = (await settings.get(guild.id)).applications;
-  const form = cfg.forms.find((f) => f.id === app.form_id);
-
-  const member = await guild.members.fetch(app.user_id).catch(() => null);
-  if (accepted && member && form?.acceptRole) await member.roles.add(form.acceptRole);
-  if(accepted&&member&&form?.removeRole)await member.roles.remove(form.removeRole);
-  if(!accepted&&member&&form?.denyRole)await member.roles.add(form.denyRole);
-  (await db.prepare('UPDATE applications SET status=?, reviewed_by=? WHERE id=?').run(accepted ? 'accepted' : 'denied', reviewerId, app.id));
-  if (member) member.send((accepted?form?.acceptMessage:form?.denyMessage)||`Din ansøgning (**${form?.name || app.form_id}**) på **${guild.name}** er ${accepted ? '✅ accepteret' : '❌ afvist'}.`).catch(() => {});
-  // Opdater review-beskeden
-  const ch = guild.channels.cache.get(app.channel_id);
-  const msg = ch && (await ch.messages.fetch(app.message_id).catch(() => null));
-  if (msg) {
-    const e = embed(msg.embeds[0]?.title, msg.embeds[0]?.description, accepted ? 0x57f287 : 0xed4245).setFields(msg.embeds[0]?.fields || [])
-      .setFooter({ text: `${accepted ? 'Accepteret' : 'Afvist'} af ${reviewerId === 'dashboard' ? 'dashboard' : (await guild.client.users.fetch(reviewerId).catch(() => null))?.tag || reviewerId}` });
-    await msg.edit({ embeds: [e], components: [reviewRow(app.id, true)] }).catch(() => {});
-  }
-}
-
-async function onInteraction(interaction) {
-  const id = interaction.customId || '';
-  if (interaction.isButton() && id.startsWith('app:start:')) return (await showForm(interaction, id.split(':')[2]));
-  if (interaction.isModalSubmit() && id.startsWith('app:modal:')) {
-    const cfg = (await settings.get(interaction.guild.id)).applications;
-    const form = cfg.forms.find((f) => f.id === id.split(':')[2]);
-    if (!form) return interaction.reply({ content: 'Formularen findes ikke.', ...EPH });
-    if(form.requiredRole&&!interaction.member.roles.cache.has(form.requiredRole))return interaction.reply({content:'Du mangler den krævede rolle.',...EPH});
-    if(form.minAccountAgeDays&&(Date.now()-interaction.user.createdTimestamp)/86400000<form.minAccountAgeDays)return interaction.reply({content:'Din Discord-konto er for ny.',...EPH});
-    const pending=await db.prepare("SELECT id FROM applications WHERE guild_id=? AND user_id=? AND form_id=? AND status='pending'").get(interaction.guild.id,interaction.user.id,form.id);if(pending)return interaction.reply({content:'Du har allerede en ansøgning, der afventer svar.',...EPH});
-    const qs = form.questions.filter(Boolean).slice(0, 5);
-    const answers = qs.map((_, i) => interaction.fields.getTextInputValue(`q${i}`));
-    const info = (await db.prepare('INSERT INTO applications (guild_id, form_id, user_id, answers, created_at) VALUES (?,?,?,?,?)')
-      .run(interaction.guild.id, form.id, interaction.user.id, JSON.stringify(answers), Date.now()));
-    const e = embed(`Ansøgning #${info.lastInsertRowid}: ${form.name}`, `Fra <@${interaction.user.id}> (${interaction.user.tag})\nKonto oprettet <t:${Math.floor(interaction.user.createdTimestamp / 1000)}:R>`)
-      .addFields(qs.map((q, i) => ({ name: q.slice(0, 256), value: answers[i].slice(0, 1024) || '-' })));
-    const msg = await sendTo(interaction.guild, form.reviewChannel||cfg.reviewChannel, { embeds: [e], components: [reviewRow(info.lastInsertRowid)] });
-    if (msg) (await db.prepare('UPDATE applications SET message_id=?, channel_id=? WHERE id=?').run(msg.id, msg.channelId, info.lastInsertRowid));
-    return interaction.reply({ content: '✅ Din ansøgning er sendt! Du får besked når den er behandlet.', ...EPH });
-  }
-  if (interaction.isButton() && (id.startsWith('app:accept:') || id.startsWith('app:deny:'))) {
-    if (!isAdmin(interaction.member) && !interaction.member.permissions.has('ManageRoles')) return interaction.reply({ content: 'Ingen adgang.', ...EPH });
-    await interaction.deferUpdate();
-    try { await review(interaction.guild, Number(id.split(':')[2]), id.startsWith('app:accept:'), interaction.user.id); }
-    catch (e) { await interaction.followUp({ content: e.message, ...EPH }); }
-  }
-}
-
-async function onCommand(interaction) {
-  if (interaction.options.getSubcommand() === 'panel') {
-    if (!isAdmin(interaction.member)) return interaction.reply({ content: 'Kræver "Administrer server".', ...EPH });
-    await sendPanel(interaction.guild, interaction.channelId);
-    return interaction.reply({ content: 'Panel sendt ✅', ...EPH });
-  }
-}
-
-module.exports = { sendPanel, review, onInteraction, onCommand };
+async function submit(guild,uid,fid,answers){return state.serial(sessionKey(guild.id,uid,fid),async()=>{const s=await session(guild.id,uid,fid),{form}=await formFor(guild.id,fid),member=await guild.members.fetch(uid);rules.checkAccess(form,member);const qs=rules.questions(s.formSnapshot);if(!Array.isArray(answers)||answers.length!==qs.length)throw Error('Besvar alle spørgsmål');const validated=qs.map((q,j)=>rules.validateAnswer(q,answers[j]));const pending=await db.prepare("SELECT id FROM applications WHERE guild_id=? AND user_id=? AND form_id=? AND status='pending'").get(guild.id,uid,fid);if(pending)throw Error('Din ansøgning er allerede indsendt');const info=await db.prepare('INSERT INTO applications (guild_id, form_id, user_id, answers, created_at) VALUES (?,?,?,?,?)').run(guild.id,fid,uid,JSON.stringify(validated),Date.now()),id=info.lastInsertRowid;await state.write(metaKey(guild.id,id),()=>({form:s.formSnapshot,startedAt:s.startedAt,deliveryError:''}));await state.write(sessionKey(guild.id,uid,fid),v=>({...v,active:false,submittedAt:Date.now(),submissionId:id}));try{await updateRoles(member,rules.roles(form,'pendingRoles'),rules.roles(form,'submitRemoveRoles'));await delivery(guild,id);}catch(e){await state.write(metaKey(guild.id,id),v=>({...v,deliveryError:e.message}));}return {id,message:rules.message(form.completionMessage||'Din ansøgning er indsendt. Du får besked, når den er behandlet.',form,uid)};});}
+async function review(guild,id,accepted,reviewerId,system=false){return state.serial(metaKey(guild.id,id),async()=>{const row=await db.prepare('SELECT * FROM applications WHERE id=? AND guild_id=?').get(id,guild.id);if(!row||row.status!=='pending')throw Error('Ansøgningen er allerede behandlet');const meta=await state.read(metaKey(guild.id,id),{}),current=(await settings.get(guild.id)).applications.forms.find(f=>f.id===row.form_id)||meta.form;if(!current)throw Error('Formularen kunne ikke findes');const form=meta.form||current;if(!system){const actor=await guild.members.fetch(reviewerId),managers=rules.roles(current,'managerRoles');if(managers.length?!managers.some(r=>actor.roles.cache.has(r)):!isAdmin(actor)&&!actor.permissions.has('ManageRoles')&&!await require('../access').isManager(guild,reviewerId))throw Error('Du må ikke behandle denne ansøgning');}const member=await guild.members.fetch(row.user_id).catch(()=>null);if(member)await updateRoles(member,accepted?rules.roles(form,'acceptRoles','acceptRole'):rules.roles(form,'denyRoles','denyRole'),[...rules.roles(form,'pendingRoles'),...(accepted?rules.roles(form,'acceptRemoveRoles','removeRole'):rules.roles(form,'denyRemoveRoles'))]);await db.prepare('UPDATE applications SET status=?, reviewed_by=? WHERE id=?').run(accepted?'accepted':'denied',reviewerId,row.id);await state.write(metaKey(guild.id,id),v=>({...v,form,reviewedAt:Date.now(),reviewerId}));if(member)await member.send({content:rules.message(accepted?form.acceptMessage||'Din ansøgning til {applicationName} er accepteret af {user}.':form.denyMessage||'Din ansøgning til {applicationName} er afvist af {user}.',form,row.user_id,reviewerId),allowedMentions:{parse:[]}}).catch(()=>{});try{await delivery(guild,id);await state.write(metaKey(guild.id,id),v=>({...v,deliveryError:''}));}catch(e){await state.write(metaKey(guild.id,id),v=>({...v,deliveryError:e.message}));}});}
+async function onInteraction(i){const parts=i.customId.split(':'),action=parts[1];if(action==='start'){await i.deferReply(EPH);const {form}=await formFor(i.guildId,parts[2]);if(form.method==='web')return i.editReply({content:'Udfyld ansøgningen her: '+(process.env.BASE_URL||'https://fivem-dev-bot.onrender.com')+'/apply/'+i.guildId+'/'+form.id,...EPH});const method=form.method==='dm'?'dm':'discord';if(method==='dm'){const s=await begin(i.guild,i.user.id,form.id,'dm');await i.user.send({content:rules.message(form.confirmationMessage||'Du kan nu starte din ansøgning. Brug Fortsæt. Du kan annullere undervejs.',form,i.user.id),components:[continueRow(i.guildId,form.id,s.page)]});return i.editReply('Ansøgningen er sendt i en privat besked.');}const started=await begin(i.guild,i.user.id,form.id);const row=continueRow(i.guildId,form.id,started.page);if(form.method==='both')row.addComponents(new ButtonBuilder().setLabel('Åbn på hjemmesiden').setStyle(ButtonStyle.Link).setURL((process.env.BASE_URL||'https://fivem-dev-bot.onrender.com')+'/apply/'+i.guildId+'/'+form.id));return i.editReply({content:rules.message(form.confirmationMessage||'Du kan nu udfylde ansøgningen. Tryk Fortsæt. Dine svar gemmes side for side, og du kan annullere undervejs.',form,i.user.id),components:[row]});}
+if(['continue','page','cancel'].includes(action)){const guild=i.client.guilds.cache.get(parts[2]),fid=parts[3];if(!guild)throw Error('Serveren findes ikke');if(action==='cancel'){await state.write(sessionKey(guild.id,i.user.id,fid),v=>({...v,active:false}));return i.reply({content:'Ansøgningen er annulleret.',...(i.inGuild()?EPH:{})});}const page=Number(parts[4]);if(action==='continue')return showPage(i,guild,fid,page);await i.deferReply(i.inGuild()?EPH:{});const key=sessionKey(guild.id,i.user.id,fid);let saved;await state.serial(key,async()=>{const s=await session(guild.id,i.user.id,fid);if(s.page!==page)throw Error('Denne side er allerede gemt');const qs=rules.questions(s.formSnapshot),answers=[...s.answers];for(let j=page*5;j<Math.min(qs.length,page*5+5);j++){const q=qs[j],v=['choice','multiple'].includes(q.type)?i.fields.getStringSelectValues('q'+j).map(k=>q.options[Number(k)]):i.fields.getTextInputValue('q'+j);answers[j]=rules.validateAnswer(q,q.type==='choice'?v[0]:v);}saved=await state.write(key,v=>({...v,answers,page:page+1}));});if(saved.answers.length===rules.questions(saved.formSnapshot).length){const result=await submit(guild,i.user.id,fid,saved.answers);return i.editReply({content:result.message,components:[]});}return i.editReply({content:'Svarene er gemt. Fortsæt til næste side.',components:[continueRow(guild.id,fid,saved.page)]});}
+if(['accept','deny'].includes(action)){await i.deferReply(EPH);await review(i.guild,Number(parts[2]),action==='accept',i.user.id);return i.editReply('Ansøgningen er behandlet.');}
+if(action==='modal')throw Error('Denne gamle formular er erstattet. Åbn ansøgningspanelet igen.');}
+async function onCommand(i){if(!isAdmin(i.member))return i.reply({content:'Kræver Administrer server.',...EPH});await i.deferReply(EPH);await sendPanel(i.guild,i.channelId);return i.editReply('Ansøgningspanel sendt.');}
+async function onLeave(member){for(const row of await list(member.guild.id)){if(row.user_id!==member.id||row.status!=='pending')continue;const form=(await settings.get(member.guild.id)).applications.forms.find(f=>f.id===row.form_id)||row.metadata.form;if(form?.leaveAction==='deny')await review(member.guild,row.id,false,'system',true);}}
+module.exports={sendPanel,review,onInteraction,onCommand,begin,session,submit,saveDraft,list,delivery,onLeave,...rules};

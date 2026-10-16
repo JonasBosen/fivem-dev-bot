@@ -66,6 +66,7 @@ const DEFAULTS = {
       { id: 'report', label: 'Rapportér en spiller', emoji: '🚨', questions: ['Hvem rapporterer du?', 'Hvad skete der?'] },
     ],
   },
+  temporaryVoice: {enabled:false,onePerUser:true,creators:[],actions:["name","limit","lock","unlock","hide","show","trust","untrust","block","unblock","kick","claim","transfer","region","delete","waiting","chat","closechat"]},
   applications: {color:'#5865f2',mediaId:'',imageUrl:'',footer:'',
     reviewChannel: '',
     panelTitle: 'Ansøgninger',

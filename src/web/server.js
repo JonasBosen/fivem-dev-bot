@@ -39,6 +39,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   // ---------- Login ----------
   app.get(['/login', '/auth/login'], (req, res) => {
     if (!databaseReady || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) return res.status(503).send('AllBot mangler opsætning. Tilføj DATABASE_URL, DISCORD_CLIENT_ID og DISCORD_CLIENT_SECRET i Render Environment.');
+    if(typeof req.query.next==='string'&&/^\/apply\/\d{17,20}\/[-a-z0-9_]{1,40}$/i.test(req.query.next))req.session.loginNext=req.query.next;
     req.session.state = crypto.randomBytes(16).toString('hex');
     const q = new URLSearchParams({ client_id: process.env.DISCORD_CLIENT_ID, redirect_uri: REDIRECT, response_type: 'code', scope: 'identify', state: req.session.state, prompt: 'none' });
     res.redirect(`https://discord.com/oauth2/authorize?${q}`);
@@ -56,11 +57,12 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       const auth = { Authorization: `Bearer ${tok.access_token}` };
       const user=await fetch(`${API}/users/@me`,{headers:auth}).then(r=>r.json());
       if (!user.id) throw new Error('Discord kunne ikke bekræfte brugeren');
+      const loginNext=req.session.loginNext;
       req.session.regenerate((err) => {
         if (err) return res.status(500).send('Session-fejl');
         req.session.user = { id: user.id, username: user.global_name || user.username, avatar: user.avatar };
         req.session.guilds=[];
-        res.redirect('/');
+        res.redirect(loginNext||'/');
       });
     } catch (e) { console.error('[login]', e.message); res.status(500).send('Login fejlede. Prøv igen.'); }
   });
@@ -244,6 +246,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(req.params.module==='appearance'){const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}
     if(req.params.module==='welcome')req.body=require('../modules/panel-media').validate(req.body);
     if(['tickets','applications'].includes(req.params.module))req.body=require('../modules/panel-media').validateForms(req.params.module,req.body);
+    if(req.params.module==='temporaryVoice')req.body=require('../modules/temporary-voice').validate(req.body);
     if(req.params.module==='stream')req.body=stream.validateConfig(req.body);
     if (!Object.hasOwn(DEFAULTS, req.params.module)) throw new Error('Ukendt modul');
     req.auditBefore=(await settings.get(req.guild.id))[req.params.module];
@@ -255,7 +258,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/guild/:gid/panel/:type', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
     const fn = { developer: developer.sendPanel, tickets: tickets.sendPanel, applications: applications.sendPanel, verification: community.sendVerifyPanel }[req.params.type];
     if (!fn) throw new Error('Ukendt panel');
-    await fn(req.guild, req.body.channel);
+    await fn(req.guild, req.body.channel,req.body.forms);
   }));
 
   app.get('/api/guild/:gid/audit/:module',auth,guildAccess,wrap(async(req,res)=>{if(req.params.module!=='developer')return res.status(404).json({error:'Denne log er fjernet'});if(req.params.module==='developer'&&(!req.panelIdentity.developer||!(await require('../modules/developer-gate').status(req.guild,req.session)).unlocked))return res.status(423).json({error:'Lås udviklerpanelet op med kode først'});return audit.page(req.guild.id,req.params.module,req.query.before);}));
@@ -288,6 +291,17 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
   app.post('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.link(req.guild,req.body.platform,req.body.userId,req.body.handle,req.session.user.id)));
   app.delete('/api/guild/:gid/stream/accounts/:platform/:uid',auth,guildAccess,wrap(req=>stream.unlink(req.guild,req.params.platform,req.params.uid,req.session.user.id)));
+  app.get('/apply/:gid/:fid',(req,res)=>res.sendFile(path.join(__dirname,'public','application-form.html')));
+  const applicant=async(req,res,next)=>{if(!req.session.user)return res.status(401).json({error:'Log ind med Discord'});try{if(req.params.gid!==personal.targetId())throw Error('Ukendt server');req.guild=client.guilds.cache.get(req.params.gid);req.applicant=await req.guild.members.fetch(req.session.user.id);next();}catch{res.status(403).json({error:'Du skal være medlem af Dream Network'});}};
+  app.get('/api/apply/:gid/:fid',applicant,wrap(async req=>{const form=(await settings.get(req.guild.id)).applications.forms.find(f=>f.id===req.params.fid);if(!form)throw Error('Formularen findes ikke');applications.checkAccess(form,req.applicant);return {name:form.name,questions:applications.questions(form),confirmationMessage:form.confirmationMessage||'Udfyld spørgsmålene. Du får svaret privat på Discord.',timeLimitMinutes:form.timeLimitMinutes??180};}));
+  app.post('/api/apply/:gid/:fid/start',applicant,wrap(async req=>{const value=await applications.begin(req.guild,req.session.user.id,req.params.fid,'web');return {answers:value.answers,expiresAt:value.expiresAt};}));
+  app.post('/api/apply/:gid/:fid/draft',applicant,wrap(req=>applications.saveDraft(req.guild,req.session.user.id,req.params.fid,req.body.answers)));
+  app.post('/api/apply/:gid/:fid/submit',applicant,wrap(req=>applications.submit(req.guild,req.session.user.id,req.params.fid,req.body.answers)));
+  app.post('/api/guild/:gid/applications/:aid/redeliver',auth,guildAccess,wrap(req=>applications.delivery(req.guild,Number(req.params.aid))));
+  app.get('/api/guild/:gid/applications-export',auth,guildAccess,wrap(async(req,res)=>{const rows=await applications.list(req.guild.id);const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,m=>"'"+m).replaceAll('"','""')+'"';const csv=[['ID','Formular','Discord-ID','Status','Oprettet','Behandler','Spørgsmål og svar'],...rows.map(r=>[r.id,r.metadata.form?.name||r.form_id,r.user_id,r.status,new Date(r.created_at).toISOString(),r.reviewed_by,JSON.stringify(r.answers)])].map(row=>row.map(cell).join(';')).join('\r\n');res.attachment('ansøgninger.csv').type('text/csv; charset=utf-8').send('\uFEFF'+csv);}));
+  app.get('/api/guild/:gid/temporary-voice',auth,guildAccess,wrap(async req=>({rooms:await require('../modules/temporary-voice').rooms(req.guild.id)})));
+  app.post('/api/guild/:gid/temporary-voice/panel',auth,guildAccess,wrap(req=>require('../modules/temporary-voice').sendPanel(req.guild,req.body.channel).then(()=>({ok:true}))));
+  app.post('/api/guild/:gid/refresh-options',auth,guildAccess,wrap(async req=>{await Promise.all([req.guild.channels.fetch(),req.guild.roles.fetch()]);return {ok:true};}));
   // Tickets
   const userName = async (id) => (id ? (await client.users.fetch(id).catch(() => null))?.username || id : null);
   app.get('/api/guild/:gid/tickets', auth, guildAccess, wrap(async (req) => {
@@ -307,10 +321,11 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
 
   // Ansøgninger
   app.get('/api/guild/:gid/applications', auth, guildAccess, wrap(async (req) => {
-    const rows = (await db.prepare('SELECT * FROM applications WHERE guild_id=? ORDER BY id DESC LIMIT 200').all(req.guild.id));
-    return Promise.all(rows.map(async (r) => ({ ...r, answers: JSON.parse(r.answers || '[]'), user: await userName(r.user_id) })));
+    const rows = await applications.list(req.guild.id);
+    return Promise.all(rows.map(async (r) => ({ ...r, user: await userName(r.user_id) })));
   }));
   app.post('/api/guild/:gid/applications/:aid/:decision', auth, guildAccess, wrap(async (req) => {
+    if(!['accept','deny'].includes(req.params.decision))throw Error('Ukendt beslutning');
     await applications.review(req.guild, Number(req.params.aid), req.params.decision === 'accept', req.session.user.id);
   }));
 

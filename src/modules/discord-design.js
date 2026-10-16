@@ -1,5 +1,5 @@
 const {db}=require('../db'),{EmbedBuilder}=require('discord.js'),media=require('./panel-media');
-const types=['developer','tickets','applications','welcome','verification','birthdays','giveaways','stream','slideshow'];
+const types=['developer','tickets','applications','welcome','verification','birthdays','giveaways','stream','slideshow','temporaryVoice'];
 const defaults={enabled:false,mode:'image',title:'',subtitle:'',footer:'',color:'#5865f2',background:'#111827',textColor:'#ffffff',height:500,overlay:45,align:'left',mediaId:'',imageUrl:''};
 const library=type=>['birthdays','slideshow'].includes(type)?type:'shared';const key=(gid,type)=>{if(!types.includes(type))throw new Error('Ukendt Discord-panel');return 'discord-design:'+gid+':'+type;};
 async function get(gid,type){const row=await db.prepare('SELECT data FROM settings WHERE guild_id = ?').get(key(gid,type));return {...defaults,...JSON.parse(row?.data||'{}')};}

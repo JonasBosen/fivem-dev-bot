@@ -8,7 +8,7 @@ function validate(input={}){
   if(out.backgroundImage){const url=new URL(out.backgroundImage);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Brug et HTTPS-link til baggrundsbilledet');}
   if(!['comfortable','compact'].includes(out.density))throw new Error('Ukendt tæthed');
   if(!Number.isInteger(out.radius)||out.radius<0||out.radius>30)throw new Error('Hjørner skal være 0–30');
-  const allowed=['staff','developer','overview','tickets','applications','music','moderation','welcome','levels','giveaways','stream','birthdays','slideshow','restart','custom','appearance','account','txadmin'];
+  const allowed=['staff','developer','overview','tickets','applications','music','moderation','welcome','levels','giveaways','stream','birthdays','slideshow','restart','custom','appearance','account','txadmin','temporaryVoice'];
   if(!Array.isArray(out.navigationOrder)||out.navigationOrder.length>allowed.length||new Set(out.navigationOrder).size!==out.navigationOrder.length||out.navigationOrder.some(k=>!allowed.includes(k)))throw new Error('Ugyldig menurækkefølge');
   return out;
 }

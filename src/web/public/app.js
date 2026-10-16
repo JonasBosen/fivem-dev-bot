@@ -214,7 +214,7 @@ function panelCard(type, text) {
 // ---------- Sider ----------
 const PAGES = [
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['staff', '👥', 'Staff-panel'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
-  ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
+  ['temporaryVoice','🔊','Midlertidige talerum'], ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
@@ -268,30 +268,8 @@ const pages = {
     ];
   },
 
-  async applications() {
-    const stat=(n,l)=>h('div',{class:'stat'},h('b',{},n),h('span',{},l));
-    const list = await api(`/api/guild/${G.id}/applications`);
-    const forms = Object.fromEntries(G.settings.applications.forms.map((f) => [f.id, f]));
-    const cards = list.slice(0, 50).map((a) => h('div', { class: 'row' },
-      h('div', { class: 'top', style: 'margin:0 0 8px' },
-        h('b', {}, `#${a.id} · ${forms[a.form_id]?.name || a.form_id} · ${a.user || a.user_id}`),
-        h('span', { class: `badge ${a.status}` }, { pending: 'Afventer', accepted: 'Accepteret', denied: 'Afvist' }[a.status])),
-      ...(forms[a.form_id]?.questions || []).map((q, i) => a.answers[i] && h('p', {}, h('b', {}, q), h('br'), a.answers[i])),
-      a.status === 'pending' && h('div', { class: 'actions' },
-        h('button', { class: 'btn bad sm', onclick: run(async () => { await api(`/api/guild/${G.id}/applications/${a.id}/deny`, { method: 'POST' }); toast('Afvist'); route(); }) }, 'Afvis'),
-        h('button', { class: 'btn ok sm', onclick: run(async () => { await api(`/api/guild/${G.id}/applications/${a.id}/accept`, { method: 'POST' }); toast('Accepteret'); route(); }) }, 'Accepter'))));
-    const search=h('input',{type:'search',placeholder:'Søg i indsendelser…','aria-label':'Søg i indsendelser'});
-    const filter=h('select',{'aria-label':'Filtrer efter status'},...Object.entries({all:'Alle indsendelser',pending:'Afventer behandling',accepted:'Accepterede',denied:'Afviste'}).map(([value,label])=>h('option',{value},label)));
-    const results=h('div',{class:'rows'});
-    function draw(){const matches=list.slice(0,50).map((a,i)=>({a,card:cards[i]})).filter(({a})=>(filter.value==='all'||a.status===filter.value)&&JSON.stringify([a.id,forms[a.form_id]?.name,a.user,a.user_id,a.answers]).toLocaleLowerCase('da').includes(search.value.toLocaleLowerCase('da')));results.replaceChildren(...(matches.length?matches.map(x=>x.card):[h('p',{class:'muted'},'Ingen indsendelser passer til din søgning.')]));}
-    search.addEventListener('input',draw);filter.addEventListener('change',draw);draw();
-    return dashboardTabs([
-      {id:'overview',label:'Oversigt',content:[h('div',{class:'card'},h('h2',{},'Ansøgninger til Dream Network'),h('p',{class:'muted'},'Opret formularer, send et panel til Discord, og behandl medlemmernes indsendelser her.'),h('div',{class:'stats'},stat(Object.keys(forms).length,'Formularer'),stat(list.filter(a=>a.status==='pending').length,'Afventer behandling'),stat(list.filter(a=>a.status==='accepted').length,'Accepterede')),h('h3',{},'Jeres formularer'),...Object.values(forms).map(f=>h('div',{class:'row'},h('b',{},f.name),h('p',{class:'muted'},(f.questions||[]).length+' spørgsmål · '+(f.acceptRole?'Tildeler en rolle ved accept':'Ingen automatisk rolle')))),!Object.keys(forms).length&&h('p',{},'Opret jeres første formular under Formularer og indstillinger.'))]},
-      {id:'forms',label:'Formularer og indstillinger',content:[await renderModuleStudio('applications','Formularer og indstillinger')]},
-      {id:'panels',label:'Discord-paneler',content:[panelCard('applications','Send en besked med knapper, som medlemmer kan bruge til at åbne jeres formularer.')]},
-      {id:'submissions',label:'Indsendelser',content:[h('div',{class:'card'},h('h2',{},'Indsendelser'),h('div',{class:'actions'},search,filter),results)]}
-    ],G.id+'-applications','overview');
-  },
+  async applications() { return renderAdvancedApplications(); },
+  async temporaryVoice(){return renderTemporaryVoice();},
 
   async music() {
     const botSelect=h('select',{},h('option',{value:''},'Automatisk: brug en ledig musikbot'));
@@ -417,7 +395,7 @@ async function route() {
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(['developer','developer-wishes','stream','appearance','logs','applications','custom','restart','account'].includes(page)?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','developer-wishes','stream','appearance','logs','applications','temporaryVoice','custom','restart','account'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
