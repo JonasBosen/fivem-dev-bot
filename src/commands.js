@@ -72,7 +72,6 @@ const definitions = [
   new S().setName('volume').setDescription('Lydstyrke').addIntegerOption((o) => o.setName('procent').setDescription('0-150').setRequired(true).setMinValue(0).setMaxValue(150)),
   new S().setName('loop').setDescription('Gentag').addStringOption((o) => o.setName('tilstand').setDescription('Tilstand').setRequired(true)
     .addChoices({ name: 'Fra', value: 'off' }, { name: 'Sang', value: 'track' }, { name: 'Kø', value: 'queue' }, { name: 'Autoplay', value: 'autoplay' })),
-  new S().setName('talerum').setDescription('Styr dit midlertidige talerum').addStringOption(o=>o.setName('handling').setDescription('Hvad vil du ændre?').setRequired(true).addChoices(...Object.entries(require('./modules/temporary-voice').actions).map(([value,name])=>({name,value})))).addStringOption(o=>o.setName('værdi').setDescription('Navn, antal, Discord-ID eller region, hvis handlingen kræver det').setMaxLength(100)),
   // Dashboard-link
   new S().setName('dashboard').setDescription('Link til kontrolpanelet'),
 ].map((c) => c.setContexts(InteractionContextType.Guild).toJSON());

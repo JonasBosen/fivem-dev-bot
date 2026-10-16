@@ -72,7 +72,8 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   // ---------- Adgangskontrol ----------
   const discordAuth=(req,res,next)=>req.session.user?next():res.status(401).json({error:'Log ind med Discord'});
   const auth=async(req,res,next)=>discordAuth(req,res,async()=>{try{const guild=client.guilds.cache.get(personal.targetId());if(!guild||req.params.gid&&req.params.gid!==guild.id)return res.status(403).json({error:'Denne hjemmeside tilhører Dream Network'});const identity=await personal.status(guild,req.session);if(!identity.eligible)return res.status(403).json({error:'Du mangler en adgangsgivende Discord-rolle'});if(!identity.unlocked)return res.status(428).json({error:'Log ind med din personlige kode'});req.panelIdentity=identity;req.guild=guild;next();}catch{res.status(503).json({error:'Adgangen kunne ikke kontrolleres'});}});
-  require('./staff-proxy').install(app,{auth,base:BASE});
+  app.use('/staff-panel',(req,res)=>res.status(410).send('Staff-panelet er fjernet fra denne bot.'));
+  app.use('/api/guild/:gid/temporary-voice',(req,res)=>res.status(410).json({error:'Midlertidige talerum er fjernet'}));
   const ownerAccess=(req,res,next)=>req.panelIdentity?.owner?next():res.status(403).json({error:'Kun ejeren har adgang'});
   const guildAccess = async (req, res, next) => {
     try {
@@ -246,7 +247,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(req.params.module==='appearance'){const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}
     if(req.params.module==='welcome')req.body=require('../modules/panel-media').validate(req.body);
     if(['tickets','applications'].includes(req.params.module))req.body=require('../modules/panel-media').validateForms(req.params.module,req.body);
-    if(req.params.module==='temporaryVoice')req.body=require('../modules/temporary-voice').validate(req.body);
+    if(req.params.module==='temporaryVoice')return res.status(410).json({error:'Midlertidige talerum er fjernet'});
     if(req.params.module==='stream')req.body=stream.validateConfig(req.body);
     if (!Object.hasOwn(DEFAULTS, req.params.module)) throw new Error('Ukendt modul');
     req.auditBefore=(await settings.get(req.guild.id))[req.params.module];
@@ -299,8 +300,6 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/apply/:gid/:fid/submit',applicant,wrap(req=>applications.submit(req.guild,req.session.user.id,req.params.fid,req.body.answers)));
   app.post('/api/guild/:gid/applications/:aid/redeliver',auth,guildAccess,wrap(req=>applications.delivery(req.guild,Number(req.params.aid))));
   app.get('/api/guild/:gid/applications-export',auth,guildAccess,wrap(async(req,res)=>{const rows=await applications.list(req.guild.id);const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,m=>"'"+m).replaceAll('"','""')+'"';const csv=[['ID','Formular','Discord-ID','Status','Oprettet','Behandler','Spørgsmål og svar'],...rows.map(r=>[r.id,r.metadata.form?.name||r.form_id,r.user_id,r.status,new Date(r.created_at).toISOString(),r.reviewed_by,JSON.stringify(r.answers)])].map(row=>row.map(cell).join(';')).join('\r\n');res.attachment('ansøgninger.csv').type('text/csv; charset=utf-8').send('\uFEFF'+csv);}));
-  app.get('/api/guild/:gid/temporary-voice',auth,guildAccess,wrap(async req=>({rooms:await require('../modules/temporary-voice').rooms(req.guild.id)})));
-  app.post('/api/guild/:gid/temporary-voice/panel',auth,guildAccess,wrap(req=>require('../modules/temporary-voice').sendPanel(req.guild,req.body.channel).then(()=>({ok:true}))));
   app.post('/api/guild/:gid/refresh-options',auth,guildAccess,wrap(async req=>{await Promise.all([req.guild.channels.fetch(),req.guild.roles.fetch()]);return {ok:true};}));
   // Tickets
   const userName = async (id) => (id ? (await client.users.fetch(id).catch(() => null))?.username || id : null);

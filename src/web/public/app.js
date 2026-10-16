@@ -213,13 +213,12 @@ function panelCard(type, text) {
 
 // ---------- Sider ----------
 const PAGES = [
-  ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['staff', '👥', 'Staff-panel'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
-  ['temporaryVoice','🔊','Midlertidige talerum'], ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
+  ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
+  ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],
 ];
 
 const pages = {
-  async staff(){return [h('div',{class:'staff-embedded-header'},h('button',{class:'btn sec sm',onclick:()=>document.querySelector('.staff-panel-frame')?.requestFullscreen?.()},'Vis i fuld skærm')),h('iframe',{class:'staff-panel-frame',src:'/staff-panel/',title:'Dream Network staff-panel',allow:'fullscreen',style:'width:100%;height:calc(100dvh - 180px);min-height:650px;border:1px solid var(--line);border-radius:12px;background:#080a0e'})];},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
   async appearance(){return renderAppearance();},
@@ -269,7 +268,6 @@ const pages = {
   },
 
   async applications() { return renderAdvancedApplications(); },
-  async temporaryVoice(){return renderTemporaryVoice();},
 
   async music() {
     const botSelect=h('select',{},h('option',{value:''},'Automatisk: brug en ledig musikbot'));
@@ -376,7 +374,7 @@ async function route() {
   if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&['restart','levels','txadmin'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['restart','levels','txadmin','staff','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {

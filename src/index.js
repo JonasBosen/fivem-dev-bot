@@ -27,7 +27,6 @@ const client = new Client({
 });
 
 const commandRoutes = {
-  talerum:require('./modules/temporary-voice'),
   fødselsdag:require('./modules/community-studios'),
   stream,
   fejlbillede: developer, fejlsvar: developer, fejl: developer, fejlstatus: developer, warn: moderation, warnings: moderation, kick: moderation, ban: moderation, unban: moderation, timeout: moderation, clear: moderation,
@@ -39,7 +38,6 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] Logget ind som ${c.user.tag} på ${c.guilds.cache.size} servere`);
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
-  require('./modules/temporary-voice').start(c);
   giveaways.startTimer(c);
   require('./modules/prize-wheel').start(c);
   stream.startPolling(c);
@@ -54,7 +52,7 @@ client.on(Events.InteractionCreate, async (i) => {
     if(/^dev:(reply|replysubmit):/.test(i.customId||''))return await developer.onDirectReply(i,client);
     if((i.customId||'').startsWith('app:'))return await applications.onInteraction(i);
     if(!i.inGuild())return;
-    if((i.customId||'').startsWith('voice:'))return await require('./modules/temporary-voice').onInteraction(i);
+    if((i.customId||'').startsWith('voice:'))return i.reply({content:'Midlertidige talerum er fjernet fra denne bot.',flags:MessageFlags.Ephemeral});
     if (i.isChatInputCommand()) {
       if (i.commandName === 'dashboard') return i.reply({ content: `🔧 Kontrolpanel: ${process.env.BASE_URL || 'http://localhost:3000'}`, flags: MessageFlags.Ephemeral });
       if (i.commandName === 'verify-panel') {
@@ -90,7 +88,6 @@ client.on(Events.MessageCreate, async (m) => {
 });
 
 client.on(Events.GuildMemberAdd,m=>{community.onJoin(m).catch(e=>console.warn('[join]',e.message));require('./modules/members-panel').record(m,'joined').catch(e=>console.warn('[medlem]',e.message));});
-client.on(Events.VoiceStateUpdate,(old,next)=>require('./modules/temporary-voice').onVoice(old,next).catch(e=>console.warn('[talerum]',e.code||e.name)));
 client.on(Events.GuildMemberRemove,m=>{applications.onLeave(m).catch(e=>console.warn('[ansøgning]',e.code||e.name));community.onLeave(m).catch(()=>{});require('./modules/members-panel').record(m,'left').catch(e=>console.warn('[medlem]',e.message));});
 client.on(Events.GuildAuditLogEntryCreate,(entry,guild)=>require('./modules/members-panel').recordBan(entry,guild).catch(e=>console.warn('[bantidspunkt]',e.code||e.name)));
 
