@@ -3,7 +3,7 @@ const modules=['developer','overview','tickets','applications','music','moderati
 function clean(value,depth=0){
   if(depth>5)return '[afkortet]';
   if(Array.isArray(value))return value.slice(0,100).map(v=>clean(v,depth+1));
-  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).slice(0,100).map(([k,v])=>[k,/^pin$|code|hash|salt|token|secret|password|^data$|content|cookie/i.test(k)?'[skjult]':clean(v,depth+1)]));
+  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).slice(0,100).map(([k,v])=>[k,/^pin$|code|hash|salt|token|secret|api.?key|encrypted|password|^data$|content|cookie/i.test(k)?'[skjult]':clean(v,depth+1)]));
   return typeof value==='string'?value.slice(0,2000):value;
 }
 async function record(gid,uid,module,action,details={}){

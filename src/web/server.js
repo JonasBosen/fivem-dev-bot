@@ -137,8 +137,10 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(req.params.action==='lock'){delete req.session.devGate;return {ok:true};}if(req.params.action==='unlock')return require('../modules/developer-gate').unlock(req.guild,req.session,req.body.pin,req.ip);throw new Error('Ukendt handling');
   }));
   const changelog=require('../modules/developer-changelog');
-  app.get('/api/guild/:gid/developer/changelog',auth,devAccess,wrap(async req=>({ai:changelog.aiStatus(),config:await changelog.config(req.guild),drafts:await changelog.list(req.guild.id)})));
-  app.get('/api/guild/:gid/developer/changelog/diagnostics',auth,devAccess,wrap(()=>changelog.diagnostics()));
+  app.get('/api/guild/:gid/developer/changelog',auth,devAccess,wrap(async req=>({ai:await changelog.aiConfiguration(req.guild.id),canConfigureAI:!!req.panelIdentity.owner,config:await changelog.config(req.guild),drafts:await changelog.list(req.guild.id)})));
+  app.put('/api/guild/:gid/developer/changelog/ai-key',auth,devAccess,ownerAccess,wrap(req=>changelog.saveKey(req.guild.id,req.session.user.id,req.body.apiKey)));
+  app.delete('/api/guild/:gid/developer/changelog/ai-key',auth,devAccess,ownerAccess,wrap(req=>changelog.removeKey(req.guild.id,req.session.user.id)));
+  app.get('/api/guild/:gid/developer/changelog/diagnostics',auth,devAccess,wrap(req=>changelog.diagnostics(req.guild.id)));
   app.post('/api/guild/:gid/developer/changelog/drafts',auth,devAccess,wrap(req=>changelog.create(req.guild,req.session.user.id,req.body)));
   app.put('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.save(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/generate',auth,devAccess,wrap(req=>changelog.generate(req.guild,req.session.user.id,req.params.draftId,req.body)));
@@ -203,7 +205,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   // ---------- API ----------
   app.get('/ready',(req,res)=>res.status(databaseReady&&(!process.env.DISCORD_TOKEN||client.isReady())?200:503).json({databaseReady,botReady:client.isReady()}));
   app.get('/health', (req, res) => res.json({ status: 'ok', databaseReady, botReady: client.isReady() }));
-  app.get('/api/setup', (req, res) => res.json({
+  app.get('/api/setup', async (req, res) => res.json({
     databaseReady, botReady: client.isReady(), streamConnections:stream.integrationStatus(),
     loginReady: databaseReady && !!process.env.DISCORD_CLIENT_ID && !!process.env.DISCORD_CLIENT_SECRET,
     callbackUrl: REDIRECT,
@@ -214,7 +216,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       discordClientSecret: !!process.env.DISCORD_CLIENT_SECRET,
       supabaseUrl: !!process.env.SUPABASE_URL,
       supabaseKey: !!process.env.SUPABASE_SERVICE_KEY,
-      changelogAI: changelog.aiStatus().ready,
+      changelogAI: databaseReady?(await changelog.aiConfiguration(personal.targetId()).catch(()=>({ready:false}))).ready:false,
     },
   }));
   app.get('/api/me',discordAuth,wrap(async req=>{const guild=client.guilds.cache.get(personal.targetId());if(!guild)throw new Error('Dream Network er ikke tilsluttet');return {user:req.session.user,targetGuildId:guild.id,access:await personal.status(guild,req.session),botReady:client.isReady()};}));
