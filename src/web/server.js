@@ -146,7 +146,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.put('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.save(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/generate',auth,devAccess,wrap(req=>changelog.generate(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.get('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.read(req.guild.id,req.params.draftId)));
-  app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/image',auth,devAccess,wrap(req=>changelog.generateImage(req.guild,req.session.user.id,req.params.draftId,req.body)));
+  app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/image',auth,devAccess,wrap((req,res)=>res.status(410).json({error:'AI-billedgenerering er fjernet fra changelog-panelet.'})));
   app.get('/api/guild/:gid/developer/changelog/drafts/:draftId/images/:imageId',auth,devAccess,wrap(async(req,res)=>{const image=await changelog.imageFile(req.guild.id,req.params.draftId,req.params.imageId);res.set('Cache-Control','private, no-store').set('X-Content-Type-Options','nosniff').type(image.mime).send(Buffer.from(image.content,'base64'));}));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/publish',auth,devAccess,wrap(req=>changelog.publish(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/reconcile',auth,devAccess,wrap(req=>changelog.reconcile(req.guild,req.session.user.id,req.params.draftId)));
