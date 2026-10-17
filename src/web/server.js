@@ -138,9 +138,13 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   }));
   const changelog=require('../modules/developer-changelog');
   app.get('/api/guild/:gid/developer/changelog',auth,devAccess,wrap(async req=>({ai:changelog.aiStatus(),config:await changelog.config(req.guild),drafts:await changelog.list(req.guild.id)})));
+  app.get('/api/guild/:gid/developer/changelog/diagnostics',auth,devAccess,wrap(()=>changelog.diagnostics()));
   app.post('/api/guild/:gid/developer/changelog/drafts',auth,devAccess,wrap(req=>changelog.create(req.guild,req.session.user.id,req.body)));
   app.put('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.save(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/generate',auth,devAccess,wrap(req=>changelog.generate(req.guild,req.session.user.id,req.params.draftId,req.body)));
+  app.get('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.read(req.guild.id,req.params.draftId)));
+  app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/image',auth,devAccess,wrap(req=>changelog.generateImage(req.guild,req.session.user.id,req.params.draftId,req.body)));
+  app.get('/api/guild/:gid/developer/changelog/drafts/:draftId/images/:imageId',auth,devAccess,wrap(async(req,res)=>{const image=await changelog.imageFile(req.guild.id,req.params.draftId,req.params.imageId);res.set('Cache-Control','private, no-store').set('X-Content-Type-Options','nosniff').type(image.mime).send(Buffer.from(image.content,'base64'));}));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/publish',auth,devAccess,wrap(req=>changelog.publish(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/reconcile',auth,devAccess,wrap(req=>changelog.reconcile(req.guild,req.session.user.id,req.params.draftId)));
   app.post('/api/guild/:gid/developer/:id/files',auth,devAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/developer-files').upload(req.guild.id,Number(req.params.id),req.session.user.id,req.body)));
@@ -210,6 +214,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
       discordClientSecret: !!process.env.DISCORD_CLIENT_SECRET,
       supabaseUrl: !!process.env.SUPABASE_URL,
       supabaseKey: !!process.env.SUPABASE_SERVICE_KEY,
+      changelogAI: changelog.aiStatus().ready,
     },
   }));
   app.get('/api/me',discordAuth,wrap(async req=>{const guild=client.guilds.cache.get(personal.targetId());if(!guild)throw new Error('Dream Network er ikke tilsluttet');return {user:req.session.user,targetGuildId:guild.id,access:await personal.status(guild,req.session),botReady:client.isReady()};}));
@@ -282,9 +287,9 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.get('/api/guild/:gid/discord-design/:type',auth,discordDesignAccess,wrap(req=>require('../modules/discord-design').get(req.guild.id,req.params.type)));
   app.put('/api/guild/:gid/discord-design/:type',auth,discordDesignAccess,wrap(async req=>{const saved=await require('../modules/discord-design').save(req.guild.id,req.params.type,req.body);if(req.params.type==='developer')await require('../modules/developer-audit').record(req.guild.id,0,req.session.user.id,'settings_updated',{module:'discordDesign',settings:saved});if(req.params.type==='slideshow')await require('../modules/community-studios').refreshSlideshow(req.guild);return saved;}));
   app.post('/api/guild/:gid/birthdays/panel',auth,guildAccess,wrap(async req=>{const ch=await req.guild.channels.fetch(req.body.channel);if(!ch?.isTextBased())throw new Error('Vælg en tekstkanal');await ch.send(await require('../modules/discord-design').apply(req.guild.id,'birthdays',require('../modules/community-studios').birthdayPanel()));return {ok:true};}));
-  app.get('/api/guild/:gid/media',auth,guildAccess,wrap(req=>require('../modules/panel-media').list(req.guild.id,req.query.scope)));
-  app.post('/api/guild/:gid/media',auth,guildAccess,express.json({limit:'9mb'}),wrap(req=>require('../modules/panel-media').upload(req.guild.id,req.session.user.id,req.body,req.query.scope)));
-  app.get('/api/guild/:gid/media/:id',auth,guildAccess,wrap(async(req,res)=>{const img=await require('../modules/panel-media').get(req.guild.id,req.params.id,req.query.scope||'shared');if(!img)return res.status(404).json({error:'Billedet findes ikke'});res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, max-age=300').type(img.mime).send(Buffer.from(img.content,'base64'));}));
+  app.get('/api/guild/:gid/media',auth,guildAccess,wrap(req=>{if(req.query.scope==='changelog')throw Error('Brug changeloggens private billedadgang');return require('../modules/panel-media').list(req.guild.id,req.query.scope);}));
+  app.post('/api/guild/:gid/media',auth,guildAccess,express.json({limit:'9mb'}),wrap(req=>{if(req.query.scope==='changelog')throw Error('Brug changeloggens private billedadgang');return require('../modules/panel-media').upload(req.guild.id,req.session.user.id,req.body,req.query.scope);}));
+  app.get('/api/guild/:gid/media/:id',auth,guildAccess,wrap(async(req,res)=>{if(req.query.scope==='changelog')throw Error('Brug changeloggens private billedadgang');const img=await require('../modules/panel-media').get(req.guild.id,req.params.id,req.query.scope||'shared');if(!img)return res.status(404).json({error:'Billedet findes ikke'});res.set('X-Content-Type-Options','nosniff').set('Cache-Control','private, max-age=300').type(img.mime).send(Buffer.from(img.content,'base64'));}));
   app.post('/api/guild/:gid/welcome/test',auth,guildAccess,wrap(async req=>{const cfg=require('../modules/panel-media').validate(req.body),member=await req.guild.members.fetch(req.session.user.id),ch=await req.guild.channels.fetch(cfg.channel);if(!ch?.isTextBased())throw new Error('Vælg en tekstkanal');await ch.send(await community.welcomePayload(member,cfg));return {ok:true};}));
   app.get('/api/guild/:gid/commands',auth,guildAccess,wrap(req=>require('../modules/command-catalog').load(req.guild)));
   app.get('/api/guild/:gid/stream/accounts',auth,guildAccess,wrap(req=>stream.accounts(req.guild.id)));

@@ -195,7 +195,7 @@ async function renderDeveloperWorkspace(isWishes=false) {
   })},'Opret og åbn opgave'));
 
   const logBody=h('div'),logCount=h('p',{class:'muted'});let nextLog=null,logLoaded=false,logLoading=false,loadedCount=0;
-  const labels={changelog_created:'Changelog-udkast oprettet',changelog_generated:'Changelog skrevet med AI',changelog_published:'Changelog udgivet til Discord',panel_sent:'Panel sendt til Discord',settings_updated:'Indstillinger ændret',created:'Sag oprettet',updated:'Sag ændret',rejected:'Sag afvist',deleted:'Sag slettet',comment:'Kommentar tilføjet',image_uploaded:'Billede vedhæftet'};
+  const labels={changelog_created:'Changelog-udkast oprettet',changelog_generated:'Changelog skrevet med AI',changelog_image_generated:'AI-billede oprettet til changelog',changelog_published:'Changelog udgivet til Discord',panel_sent:'Panel sendt til Discord',settings_updated:'Indstillinger ændret',created:'Sag oprettet',updated:'Sag ændret',rejected:'Sag afvist',deleted:'Sag slettet',comment:'Kommentar tilføjet',image_uploaded:'Billede vedhæftet'};
   const older=h('button',{class:'btn sec',onclick:run(()=>loadLogs(false))},'Hent ældre hændelser');older.hidden=true;
   async function loadLogs(reset){
     if(logLoading)return;logLoading=true;

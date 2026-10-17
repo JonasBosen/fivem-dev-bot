@@ -1,5 +1,5 @@
 const {db}=require('../db'),crypto=require('crypto');
-function scope(value='shared'){if(!['shared','birthdays','slideshow','staff'].includes(value))throw new Error('Ukendt mediebibliotek');return value;}
+function scope(value='shared'){if(!['shared','birthdays','slideshow','staff','changelog'].includes(value))throw new Error('Ukendt mediebibliotek');return value;}
 async function upload(gid,uid,input,library='shared'){library=scope(library);const img=require('./developer-files').decodeImage(input),id=crypto.randomUUID();await db.prepare('INSERT INTO panel_media (id,guild_id,user_id,name,mime,content,created_at,scope) VALUES (?,?,?,?,?,?,?,?)').run(id,gid,uid,img.name,img.mime,img.content,Date.now(),library);return {id,name:img.name,mime:img.mime,scope:library};}
 async function list(gid,library='shared'){return db.prepare('SELECT id,name,mime,created_at FROM panel_media WHERE guild_id=? AND scope=? ORDER BY created_at DESC').all(gid,scope(library));}
 async function get(gid,id,library){const image=await db.prepare('SELECT * FROM panel_media WHERE guild_id=? AND id=?').get(gid,id);return image&&(library===undefined||image.scope===scope(library))?image:undefined;}
