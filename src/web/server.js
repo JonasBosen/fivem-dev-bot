@@ -142,6 +142,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.delete('/api/guild/:gid/developer/changelog/ai-key',auth,devAccess,ownerAccess,wrap(req=>changelog.removeKey(req.guild.id,req.session.user.id)));
   app.get('/api/guild/:gid/developer/changelog/diagnostics',auth,devAccess,wrap(req=>changelog.diagnostics(req.guild.id)));
   app.post('/api/guild/:gid/developer/changelog/drafts',auth,devAccess,wrap(req=>changelog.create(req.guild,req.session.user.id,req.body)));
+  app.delete('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.remove(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.put('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.save(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.post('/api/guild/:gid/developer/changelog/drafts/:draftId/generate',auth,devAccess,wrap(req=>changelog.generate(req.guild,req.session.user.id,req.params.draftId,req.body)));
   app.get('/api/guild/:gid/developer/changelog/drafts/:draftId',auth,devAccess,wrap(req=>changelog.read(req.guild.id,req.params.draftId)));
