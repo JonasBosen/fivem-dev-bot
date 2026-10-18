@@ -25,7 +25,9 @@ const API = 'https://discord.com/api/v10';
 function startWeb(client, { databaseReady = true, databaseError = '', listen = true, runtime, sessionStore } = {}) {
   const app = express();
   const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '';
-  const BASE = (process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || vercelUrl || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
+  // På Vercel ignoreres en gammel Render-adresse i BASE_URL, så login ikke sender brugeren tilbage til Render.
+  const configuredBase = process.env.VERCEL && vercelUrl && /\.onrender\.com\b/i.test(process.env.BASE_URL || '') ? '' : process.env.BASE_URL;
+  const BASE = (configuredBase || process.env.RENDER_EXTERNAL_URL || vercelUrl || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
   const REDIRECT = `${BASE}/auth/callback`;
   const owners = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
 

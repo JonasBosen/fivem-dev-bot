@@ -10,7 +10,7 @@ Vercel kører kun **web-panelet** (`api/index.js`). Discord-botten med slash-kom
 | `DISCORD_CLIENT_ID` | Fra Discord Developer Portal → OAuth2 |
 | `DISCORD_CLIENT_SECRET` | Samme sted |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` | eller `DATABASE_URL` til Supabase Session pooler |
-| `BASE_URL` | `https://fivem-dev-bot.vercel.app` (uden skråstreg til sidst). Hvis den mangler, bruges Vercels produktionsadresse. |
+| `BASE_URL` | `https://fivem-dev-bot.vercel.app` (uden skråstreg til sidst). Hvis den mangler, eller stadig peger på en `onrender.com`-adresse, bruges Vercels produktionsadresse automatisk. |
 | `SESSION_SECRET` | Valgfri lang tilfældig tekst. Hvis den mangler, udledes en fast værdi fra bot-tokenet. |
 | `MAIN_GUILD_ID` | Valgfri; standard er Dream Network-serveren |
 
