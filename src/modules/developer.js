@@ -181,7 +181,7 @@ async function onCommand(i) {
 async function onInteraction(i) {
   if(/^dev:wish(?::|category)/.test(i.customId))return require('./developer-wishes').onInteraction(i);
   if(i.customId==='dev:report'&&i.isButton())return i.reply(require('./report-panel').categoryMenu());
-  if(/^dev:(custom|category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
+  if(/^dev:(base|custom|category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
   if(/^dev:(pickcategory|pickpriority|continue):/.test(i.customId))return require('./report-form').interact(i);
   if(i.customId.startsWith('dev:submit')&&i.isModalSubmit()){
     const [, ,category='bug',priority='low',reportType='bug']=i.customId.split(':');

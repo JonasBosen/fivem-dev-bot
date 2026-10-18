@@ -72,7 +72,7 @@ module.exports = async (req, res) => {
     const app = await getApp();
     const pathname=new URL(req.url,'https://localhost').pathname;
     // OAuth and the public login screen do not need to wait for the gateway handshake.
-    const publicRoute=/^\/(?:api\/setup|login|logout|auth\/(?:login|callback)|callback|health|ready)$/.test(pathname)||pathname==='/api/me'&&!req.headers.cookie;
+    const publicRoute=/^\/(?:api\/setup|login|logout|auth\/(?:login|callback)|callback|health)$/.test(pathname)||pathname==='/api/me'&&!req.headers.cookie;
     if(!publicRoute)await gatewayReady;
     // Vercel kan have en lazy `req.body`, som ville æde forespørgslens stream før express.json() når at læse den.
     try { Object.defineProperty(req, 'body', { value: undefined, writable: true, configurable: true, enumerable: true }); } catch { /* ingen lazy body */ }
