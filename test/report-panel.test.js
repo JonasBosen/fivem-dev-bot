@@ -7,7 +7,7 @@ test('report panel renders only configured buttons with safe mention handling',(
 });
 test('category then priority opens the correct image-capable report form without another continue step',async()=>{
   let response,modal;
-  await panel.interact({customId:'dev:category:mlo',reply:async p=>response=p});
+  await panel.interact({customId:'dev:category:mlo',guildId:'g',user:{id:'u'},webhook:{deleteMessage:async()=>{}},reply:async p=>response=p});
   assert.match(response.content,/MLO/);assert.equal(response.components[0].toJSON().components.length,4);
   await panel.interact({customId:'dev:level:mlo:critical',showModal:async p=>modal=p.toJSON()});
   assert.equal(modal.custom_id,'dev:submit:mlo:critical');assert.ok(modal.components.some(c=>c.component?.custom_id==='image'));
@@ -15,16 +15,16 @@ test('category then priority opens the correct image-capable report form without
 });
 test('priority first preserves its value when choosing a category and supports custom category and priority',async()=>{
   let response,modal;
-  await panel.interact({customId:'dev:level:choose:high',reply:async p=>response=p});
+  await panel.interact({customId:'dev:level:choose:high',guildId:'g',user:{id:'u'},webhook:{deleteMessage:async()=>{}},reply:async p=>response=p,update:async p=>response=p});
  const menu=response.components[0].toJSON().components[0];assert.equal(menu.custom_id,'dev:categoryselect:high:bug');assert.equal(menu.options.length,25);
-  await panel.interact({customId:menu.custom_id,values:['vehicle'],showModal:async p=>modal=p.toJSON()});assert.equal(modal.custom_id,'dev:submit:vehicle:high');
+  await panel.interact({customId:menu.custom_id,values:['vehicle'],update:async p=>response=p,showModal:async p=>modal=p.toJSON()});assert.equal(modal.custom_id,'dev:submit:vehicle:high');
   await panel.interact({customId:'dev:level:other:custom',showModal:async p=>modal=p.toJSON()});assert.equal(modal.components.length,5);assert.ok(modal.components.some(c=>c.component?.custom_id==='custom_category'));
 });
 test('request buttons keep their type through category and priority choices',async()=>{
  let response,modal;
- await panel.interact({customId:'dev:base:request',reply:async p=>response=p});
+ await panel.interact({customId:'dev:base:request',guildId:'g',user:{id:'u'},webhook:{deleteMessage:async()=>{}},reply:async p=>response=p});
  assert.match(response.content,/ønske/i);assert.equal(response.components[0].toJSON().components[0].custom_id,'dev:categoryselect:choose:request');
- await panel.interact({customId:'dev:categoryselect:choose:request',values:['vehicle'],reply:async p=>response=p});
+ await panel.interact({customId:'dev:categoryselect:choose:request',values:['vehicle'],update:async p=>response=p});
  assert.equal(response.components[0].toJSON().components[0].custom_id,'dev:level:vehicle:low:request');
  await panel.interact({customId:'dev:level:vehicle:critical:request',showModal:async m=>modal=m.toJSON()});assert.equal(modal.custom_id,'dev:submit:vehicle:critical:request');
 });

@@ -152,12 +152,14 @@ async function submit(i, title, description, attachment, categoryId='bug', custo
   if (recentTypes.some(p=>p.reportType===reportType)) return i.editReply('Vent et minut mellem fejlmeldinger.');
   const category=require('./report-categories').normalize(categoryId,customCategory);
   const task = await create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
+  await require('./report-panel').clearPrompt(i.guildId,i.user.id);
   // A normal DM remains editable after Discord interaction tokens expire.
   try {
     const message = await i.user.send(view(task));
     await db.prepare('UPDATE dev_tasks SET channel_id=?,message_id=? WHERE guild_id=? AND id=?').run(message.channelId, message.id, i.guildId, task.id);
     await i.editReply(`Sag #${task.id} er oprettet. Status er sendt i en privat besked. Du kan også bruge /fejlstatus. Tilføj flere billeder med /fejlbillede id:${task.id} billede:din fil.`);
   } catch { await i.editReply(`Fejlmelding #${task.id} er oprettet. Dine private beskeder er lukkede; følg sagen med /fejlstatus.`); }
+  setTimeout(()=>i.deleteReply().catch(()=>{}),8000).unref?.();
 }
 async function onCommand(i) {
   if(i.commandName==='fejlbillede') {
@@ -180,7 +182,7 @@ async function onCommand(i) {
 }
 async function onInteraction(i) {
   if(/^dev:wish(?::|category)/.test(i.customId))return require('./developer-wishes').onInteraction(i);
-  if(i.customId==='dev:report'&&i.isButton())return i.reply(require('./report-panel').categoryMenu());
+  if(i.customId==='dev:report'&&i.isButton())return require('./report-panel').startPrompt(i,require('./report-panel').categoryMenu());
   if(/^dev:(base|custom|category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
   if(/^dev:(pickcategory|pickpriority|continue):/.test(i.customId))return require('./report-form').interact(i);
   if(i.customId.startsWith('dev:submit')&&i.isModalSubmit()){

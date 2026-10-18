@@ -4,7 +4,7 @@ function panel(config){const payload=require('./report-panel').panel(config||def
 function combined(config={}){
  const reportConfig=require('./report-panel-config').validate(config.reportPanel||require('./report-panel-config').defaults),wishConfig=require('./report-panel-config').validate(config.wishPanel||defaults);
  const baseReport={label:'Opret udvikler ticket',emoji:'🛠️',color:'blue',category:'choose',reportType:'bug'},baseWish={label:'Opret ønsker til serveren',emoji:'💡',color:'green',category:'choose',reportType:'request'};
- const isReportBase=a=>a.label===baseReport.label&&a.category==='choose'&&a.color==='blue'&&a.reportType==='bug',isWishBase=a=>a.label===baseWish.label&&a.category==='choose'&&a.color==='green';
+ const isReportBase=a=>a.label===baseReport.label&&a.color==='blue'&&(!a.reportType||a.reportType==='bug'),isWishBase=a=>a.label===baseWish.label&&a.category==='choose'&&a.color==='green';
  const extras=[...reportConfig.buttons.filter(b=>!isReportBase(b)).map(b=>({...b,id:'dev:custom:'+reportConfig.buttons.indexOf(b)})),...wishConfig.buttons.filter(b=>!isWishBase(b)).map(b=>({...b,id:'dev:wish:'+wishConfig.buttons.indexOf(b)}))];
  if(extras.length>23)throw new Error('Discord tillader de to faste knapper og højst 23 ekstra knapper i ét panel');
  const all=[{...baseReport,id:'dev:base:bug'},{...baseWish,id:'dev:base:request'},...extras],rows=[];
