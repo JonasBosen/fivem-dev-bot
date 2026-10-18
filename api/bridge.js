@@ -13,7 +13,7 @@ module.exports=async(req,res)=>{
   if(!['GET','HEAD','OPTIONS'].includes(req.method)&&req.headers.origin!==process.env.BASE_URL)return res.status(403).json({error:'Ugyldig oprindelse'});
   const chunks=[];let length=0;
   if(req.body!==undefined){const body=typeof req.body==='string'?req.body:JSON.stringify(req.body);length=Buffer.byteLength(body);chunks.push(Buffer.from(body));}
-  else for await(const chunk of req){length+=chunk.length;if(length>bridge.MAX_BODY)break;chunks.push(Buffer.from(chunk));}
+  else for await(const chunk of req){length+=chunk.length;if(length<=bridge.MAX_BODY)chunks.push(Buffer.from(chunk));}
   if(length>bridge.MAX_BODY)return res.status(413).json({error:'Filen er for stor. Brug højst 3 MB.'});
   const headers={};for(const name of ['cookie','content-type','origin','accept','user-agent'])if(typeof req.headers[name]==='string')headers[name]=req.headers[name];
   headers['x-forwarded-for']=req.headers['x-real-ip']||req.socket.remoteAddress||'';
