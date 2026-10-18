@@ -7,7 +7,7 @@ const prompts=new Map();
 const promptKey=(guildId,userId)=>guildId+':'+userId;
 async function startPrompt(i,payload){const result=await i.reply(payload);prompts.set(promptKey(i.guildId,i.user.id),{webhook:i.webhook,expires:Date.now()+14*60*1000});setTimeout(()=>{const current=prompts.get(promptKey(i.guildId,i.user.id));if(current?.expires<=Date.now())prompts.delete(promptKey(i.guildId,i.user.id));},14*60*1000).unref?.();return result;}
 async function clearPrompt(guildId,userId){const key=promptKey(guildId,userId),prompt=prompts.get(key);prompts.delete(key);if(prompt&&prompt.expires>Date.now())await prompt.webhook.deleteMessage('@original').catch(()=>{});}
-const priorityRow=(category,reportType='bug')=>new ActionRowBuilder().addComponents(...priorityOptions.map(([id,label,style])=>new ButtonBuilder().setCustomId(`dev:level:${category}:${id}:${reportType}`).setLabel(label).setStyle(style)));
+const priorityRow=(category,reportType='bug',flowToken='')=>new ActionRowBuilder().addComponents(...priorityOptions.map(([id,label,style])=>new ButtonBuilder().setCustomId(`dev:level:${category}:${id}:${reportType}${flowToken?':'+flowToken:''}`).setLabel(label).setStyle(style)));
 function buttonRows(buttons,prefix='dev:custom'){
  const rows=[];buttons.forEach((b,i)=>{if(i%5===0)rows.push(new ActionRowBuilder());const button=new ButtonBuilder().setCustomId(prefix+':'+i).setLabel(b.label).setStyle({blue:ButtonStyle.Primary,green:ButtonStyle.Success,red:ButtonStyle.Danger,gray:ButtonStyle.Secondary}[b.color]);if(b.emoji)button.setEmoji(b.emoji);rows.at(-1).addComponents(button);});return rows;
 }
@@ -15,38 +15,38 @@ function panel(config){
  const cfg=require('./report-panel-config').validate(config||require('./report-panel-config').defaults),rows=buttonRows(cfg.buttons);
  return {content:cfg.text,components:rows,allowedMentions:{parse:[]}};
 }
-function categoryMenu(priority='choose',reportType='bug'){
-  const menu=new StringSelectMenuBuilder().setCustomId('dev:categoryselect:'+priority+':'+reportType).setPlaceholder('Hvad handler sagen om?').addOptions(categories.map(c=>({label:c.label,value:c.id})));
+function categoryMenu(priority='choose',reportType='bug',flowToken=''){
+  const menu=new StringSelectMenuBuilder().setCustomId('dev:categoryselect:'+priority+':'+reportType+(flowToken?':'+flowToken:'')).setPlaceholder('Hvad handler sagen om?').addOptions(categories.map(c=>({label:c.label,value:c.id})));
   return {content:(reportType==='request'?'**Vælg kategori for dit ønske**':'**Vælg kategori**')+(priority==='choose'?'':' · '+priorityOptions.find(p=>p[0]===priority)?.[1]),flags:MessageFlags.Ephemeral,components:[new ActionRowBuilder().addComponents(menu)]};
 }
-async function selectPriority(i,category,reportType='bug',update=false){
+async function selectPriority(i,category,reportType='bug',update=false,flowToken=''){
   if(!categories.some(c=>c.id===category))throw new Error('Ukendt kategori');
   const label=categories.find(c=>c.id===category).label;
-  const payload={content:`**${label}**\nVælg, hvor vigtig ${reportType==='request'?'ønsket':'fejlen'} er. Derefter åbner formularen til beskrivelse og billede.`,components:[priorityRow(category,reportType)],flags:MessageFlags.Ephemeral};return update?i.update(payload):startPrompt(i,payload);
+  const payload={content:`**${label}**\nVælg, hvor vigtig ${reportType==='request'?'ønsket':'fejlen'} er. Derefter åbner formularen til beskrivelse og billede.`,components:[priorityRow(category,reportType,flowToken)],flags:MessageFlags.Ephemeral};return update?i.update(payload):startPrompt(i,payload);
 }
 async function interact(i){
-  const [,action,value,priority='low',type='bug']=i.customId.split(':');
+  const [,action,value,priority='low',type='bug',flowToken='']=i.customId.split(':');
   if(action==='custom'){
     const saved=(await require('../db').settings.get(i.guild.id)).developer,fromWish=i.customId.startsWith('dev:wish:'),cfg=(fromWish?saved.wishPanel:saved.reportPanel)||(fromWish?require('./developer-wishes').defaults:require('./report-panel-config').defaults);
     const button=cfg.buttons[Number(value)];if(!button)throw new Error('Knappen er fjernet. Brug det opdaterede panel.');
     const reportType=fromWish?'request':button.reportType||'bug';
-    return button.category==='choose'?startPrompt(i,categoryMenu('choose',reportType)):selectPriority(i,button.category,reportType);
+    return button.category==='choose'?startPrompt(i,categoryMenu('choose',reportType,i.developerPanelCooldownToken)):selectPriority(i,button.category,reportType,false,i.developerPanelCooldownToken);
   }
-  if(action==='base')return startPrompt(i,categoryMenu('choose',value==='request'?'request':'bug'));
+  if(action==='base')return startPrompt(i,categoryMenu('choose',value==='request'?'request':'bug',i.developerPanelCooldownToken));
   if(action==='categories')return startPrompt(i,categoryMenu());
   if(action==='category')return selectPriority(i,value);
   if(action==='categoryselect'){
     const category=i.values[0];if(!categories.some(c=>c.id===category))throw new Error('Ukendt kategori');
-    const reportType=['bug','request'].includes(priority)?priority:'bug',importance=['low','high','critical','custom'].includes(value)?value:'choose';
-    if(importance==='choose')return selectPriority(i,category,reportType,true);
-    return i.showModal(form.modal(category,importance,reportType));
+    const reportType=['bug','request'].includes(priority)?priority:'bug',importance=['low','high','critical','custom'].includes(value)?value:'choose',token=/^[a-f0-9]{16}$/.test(type)?type:(i.developerPanelCooldownToken||'');
+    if(importance==='choose')return selectPriority(i,category,reportType,true,token);
+    return i.showModal(form.modal(category,importance,reportType,token));
   }
   if(action==='level'){
     if(!priorityOptions.some(p=>p[0]===priority))throw new Error('Ukendt prioritet');
-    const reportType=['bug','request'].includes(type)?type:'bug';
-    if(value==='choose')return i.update(categoryMenu(priority,reportType));
+    const reportType=['bug','request'].includes(type)?type:'bug',token=i.customId.split(':')[5]||'';
+    if(value==='choose')return i.update(categoryMenu(priority,reportType,token));
     if(!categories.some(c=>c.id===value))throw new Error('Ukendt kategori');
-    return i.showModal(form.modal(value,priority,reportType));
+    return i.showModal(form.modal(value,priority,reportType,token));
   }
 }
 async function refreshPanels(client,onlyGuild,previousText){

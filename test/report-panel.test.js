@@ -28,3 +28,11 @@ test('request buttons keep their type through category and priority choices',asy
  assert.equal(response.components[0].toJSON().components[0].custom_id,'dev:level:vehicle:low:request');
  await panel.interact({customId:'dev:level:vehicle:critical:request',showModal:async m=>modal=m.toJSON()});assert.equal(modal.custom_id,'dev:submit:vehicle:critical:request');
 });
+test('panel cooldown token survives category and priority selection to the form',async()=>{
+ let response,modal;
+ await panel.interact({customId:'dev:base:bug',developerPanelCooldownToken:'0123456789abcdef',guildId:'g',user:{id:'u'},webhook:{deleteMessage:async()=>{}},reply:async p=>response=p});
+ const menu=response.components[0].toJSON().components[0];assert.equal(menu.custom_id,'dev:categoryselect:choose:bug:0123456789abcdef');
+ await panel.interact({customId:menu.custom_id,values:['vehicle'],update:async p=>response=p});
+ const priority=response.components[0].toJSON().components[0];assert.equal(priority.custom_id,'dev:level:vehicle:low:bug:0123456789abcdef');
+ await panel.interact({customId:priority.custom_id,showModal:async p=>modal=p.toJSON()});assert.equal(modal.custom_id,'dev:submit:vehicle:low:flow:0123456789abcdef');
+});

@@ -158,14 +158,15 @@ async function sendPanel(guild, channelId) {
   if (!channel?.isTextBased()) throw new Error('Vælg en tekstkanal');
   await require('./developer-wishes').sendPanel(guild,channelId);
 }
-async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='',reportType='bug') {
+async function submit(i, title, description, attachment, categoryId='bug', customCategory='', priorityId='low', customPriority='',reportType='bug',flowToken='') {
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
   await i.deferReply({ flags: MessageFlags.Ephemeral });
   if(!await canReport(i.guild,i.user.id)) return i.editReply('Du skal have borgerrollen for at indsende en fejlmelding.');
   let cooldown=1,task;
   task=await require('./durable-state').serial('developer-submit:'+i.guildId+':'+i.user.id,async()=>{
     cooldown=Math.max(0,Math.min(10080,Number((await settings.get(i.guildId)).developer.reportCooldownMinutes??1)));
-    if(await reportCooldownActive(i.guildId,i.user.id,cooldown))return null;
+    const reserved=flowToken&&await require('./developer-panel-cooldown').consume(i.guildId,i.user.id,flowToken);
+    if(!reserved&&await reportCooldownActive(i.guildId,i.user.id,cooldown))return null;
     const category=require('./report-categories').normalize(categoryId,customCategory);
     return create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
   });
@@ -200,13 +201,19 @@ async function onCommand(i) {
   return submit(i, i.options.getString('titel'), i.options.getString('beskrivelse'), i.options.getAttachment('billede'),i.options.getString('kategori')||'bug',i.options.getString('andet')||'',i.options.getString('vigtighed')||'low',i.options.getString('egen_vigtighed')||'');
 }
 async function onInteraction(i) {
+  if((i.customId==='dev:report'||/^dev:(base|custom):/.test(i.customId)||/^dev:wish:\d+$/.test(i.customId))&&i.isButton()){
+    if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});
+    i.developerPanelAuthorized=true;
+    if(!await require('./developer-panel-cooldown').checkInteraction(i))return;
+  }
   if(/^dev:wish(?::|category)/.test(i.customId))return require('./developer-wishes').onInteraction(i);
-  if(i.customId==='dev:report'&&i.isButton())return require('./report-panel').startPrompt(i,require('./report-panel').categoryMenu());
-  if(/^dev:(base|custom|category|categories|categoryselect|level):/.test(i.customId)){if(!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
+  if(i.customId==='dev:report'&&i.isButton())return require('./report-panel').startPrompt(i,require('./report-panel').categoryMenu('choose','bug',i.developerPanelCooldownToken));
+  if(/^dev:(base|custom|category|categories|categoryselect|level):/.test(i.customId)){if(!i.developerPanelAuthorized&&!await canReport(i.guild,i.user.id))return i.reply({content:'Du skal have borgerrollen for at indsende en sag.',flags:MessageFlags.Ephemeral});return require('./report-panel').interact(i);}
   if(/^dev:(pickcategory|pickpriority|continue):/.test(i.customId))return require('./report-form').interact(i);
   if(i.customId.startsWith('dev:submit')&&i.isModalSubmit()){
-    const [, ,category='bug',priority='low',reportType='bug']=i.customId.split(':');
-    return submit(i,i.fields.getTextInputValue('title'),i.fields.getTextInputValue('description'),i.fields.fields.has('image')?i.fields.getUploadedFiles('image')?.first():undefined,category,i.fields.fields.has('custom_category')?i.fields.getTextInputValue('custom_category'):'',priority,i.fields.fields.has('custom_priority')?i.fields.getTextInputValue('custom_priority'):'',reportType);
+    const [, ,category='bug',priority='low',typeOrKind='bug',flowTokenKind='',flowToken='']=i.customId.split(':');
+    const reportType=typeOrKind==='request'?'request':'bug',token=typeOrKind==='flow'?flowTokenKind:flowTokenKind==='flow'?flowToken:'';
+    return submit(i,i.fields.getTextInputValue('title'),i.fields.getTextInputValue('description'),i.fields.fields.has('image')?i.fields.getUploadedFiles('image')?.first():undefined,category,i.fields.fields.has('custom_category')?i.fields.getTextInputValue('custom_category'):'',priority,i.fields.fields.has('custom_priority')?i.fields.getTextInputValue('custom_priority'):'',reportType,token);
   }
 }
 async function remove(guild,id,uid) {
