@@ -1,0 +1,21 @@
+// Private, short-lived transport between the HTTP function and the one bot daemon.
+// The existing Express application retains responsibility for authentication and permissions.
+const crypto=require('node:crypto');
+const {db}=require('../db');
+const MAX_BODY=3*1024*1024,TTL=90000;
+function encryptionKey(){const secret=process.env.HOST_BRIDGE_SECRET?.trim();if(!secret||secret.length<32)throw Error('HOST_BRIDGE_SECRET mangler');return crypto.createHash('sha256').update('hosting-bridge-v1:'+secret).digest();}
+function seal(id,value){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',encryptionKey(),iv);cipher.setAAD(Buffer.from(id));return Buffer.concat([iv,cipher.update(JSON.stringify(value)),cipher.final(),cipher.getAuthTag()]).toString('base64');}
+function open(id,value){const bytes=Buffer.from(value,'base64'),decipher=crypto.createDecipheriv('aes-256-gcm',encryptionKey(),bytes.subarray(0,12));decipher.setAAD(Buffer.from(id));decipher.setAuthTag(bytes.subarray(-16));return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(12,-16)),decipher.final()]).toString());}
+function validRequest(input){if(!['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'].includes(input.method))throw Error('Ugyldig metode');if(typeof input.path!=='string'||input.path.length>8000||!/^\/(?:api(?:\/|\?|$)|auth\/|login(?:\?|$)|logout(?:\?|$)|callback(?:\?|$)|health(?:\?|$)|ready(?:\?|$)|apply(?:\/|\?|$))/.test(input.path)||/[\r\n\\]/.test(input.path)||input.path.startsWith('//'))throw Error('Ugyldig sti');if(typeof input.body!=='string'||Buffer.byteLength(input.body,'base64')>MAX_BODY)throw Error('Filen er for stor til webpanelet. Brug højst 3 MB.');return input;}
+async function enqueue(input){validRequest(input);const id=crypto.randomUUID(),now=Date.now();await db.prepare('INSERT INTO host_requests (id,status,request,response,created_at,expires_at) VALUES (?,?,?,NULL,?,?)').run(id,'queued',seal(id,input),now,now+TTL);return id;}
+async function claim(){const now=Date.now(),rows=await db.prepare('SELECT id,request,expires_at FROM host_requests WHERE status=? AND expires_at>? ORDER BY created_at LIMIT 8').all('queued',now);const claimed=[];for(const row of rows){const r=await db.prepare('UPDATE host_requests SET status=? WHERE id=? AND status=? AND expires_at>?').run('processing',row.id,'queued',Date.now());if(r.changes)claimed.push({...row,input:validRequest(open(row.id,row.request))});}return claimed;}
+async function complete(id,result){if(Buffer.byteLength(result.body||'','base64')>MAX_BODY)result={status:413,headers:{'content-type':'application/json'},body:Buffer.from(JSON.stringify({error:'Svaret er for stort til Vercel. Brug et mindre billede eller en mindre fil.'})).toString('base64')};await db.prepare('UPDATE host_requests SET status=?,request=?,response=? WHERE id=? AND status=?').run('done','',seal(id,result),id,'processing');}
+async function result(id){const row=await db.prepare('SELECT status,response FROM host_requests WHERE id=?').get(id);return row?.status==='done'?open(id,row.response):null;}
+async function discard(id){await db.prepare('DELETE FROM host_requests WHERE id=?').run(id);}
+async function cleanup(){await db.prepare('DELETE FROM host_requests WHERE expires_at<?').run(Date.now()-60000);await db.prepare('DELETE FROM host_sessions WHERE expires_at<?').run(Date.now());}
+function sessionStore(){const session=require('express-session');return new class extends session.Store{
+ get(id,cb){Promise.resolve().then(()=>db.prepare('SELECT payload,expires_at FROM host_sessions WHERE id=?').get(id)).then(row=>row&&row.expires_at>Date.now()?open('session:'+id,row.payload):null).then(value=>cb(null,value),cb);}
+ set(id,value,cb=()=>{}){const expires=Number(new Date(value.cookie?.expires||Date.now()+7*864e5));Promise.resolve().then(()=>db.prepare('INSERT INTO host_sessions (id,payload,expires_at) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,expires_at=excluded.expires_at').run(id,seal('session:'+id,value),expires)).then(()=>cb(),cb);}
+ destroy(id,cb=()=>{}){Promise.resolve().then(()=>db.prepare('DELETE FROM host_sessions WHERE id=?').run(id)).then(()=>cb(),cb);}
+ }();}
+module.exports={MAX_BODY,TTL,seal,open,validRequest,enqueue,claim,complete,result,discard,cleanup,sessionStore};

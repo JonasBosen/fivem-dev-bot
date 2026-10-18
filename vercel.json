@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "node scripts/build-vercel.js",
+  "outputDirectory": "dist",
+  "functions": {"api/bridge.js": {"maxDuration": 60}},
+  "routes": [
+    {"handle": "filesystem"},
+    {"src": "/(.*)", "dest": "/api/bridge?__bridge_path=$1"}
+  ],
+  "daemons": {
+    "discord-bot": {
+      "root": ".",
+      "entrypoint": "Dockerfile",
+      "instances": {"fra1": 1},
+      "resources": {"requests": {"memory": "1Gi"}},
+      "terminationGracePeriodSeconds": 15
+    }
+  }
+}

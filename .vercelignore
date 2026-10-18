@@ -1,0 +1,11 @@
+.git
+.env*
+data
+test
+node_modules
+dist
+integrations
+public
+index.js
+web.js
+store.js

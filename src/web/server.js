@@ -30,6 +30,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   if(runtime)app.use((req,res,next)=>{databaseReady=runtime.databaseReady;databaseError=runtime.databaseError;next();});
   app.use((req,res,next)=> /(?:\/developer\/\d+\/files|\/media)$/.test(req.path) ? next() : express.json({limit:'1mb'})(req,res,next));
   app.use(session({
+    ...(process.env.HOST_DAEMON==='1'?{store:require('../modules/hosting-bridge').sessionStore()}:{}),
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
     resave: false, saveUninitialized: false,
     cookie: { httpOnly: true, sameSite: 'lax', secure: BASE.startsWith('https'), maxAge: 7 * 864e5 },
