@@ -42,6 +42,7 @@ async function comment(guild,id,uid,text,asDeveloper=false) {
   await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,id,uid,asDeveloper?'developer':'citizen',text.trim(),Date.now());
   await require('./developer-audit').record(guild.id,id,uid,'comment',{author:asDeveloper?'developer':'citizen',text:text.trim()});
   await db.prepare('UPDATE dev_tasks SET updated_at=? WHERE guild_id=? AND id=?').run(Date.now(),guild.id,id);
+  if(!asDeveloper)notifyDevelopers(guild,task,text.trim(),'message').catch(e=>console.warn('[developer-notice]',e.message));
   const updated = await get(guild.id,id);
   await sync(guild.client,updated);
   if(asDeveloper && task.user_id!==uid) {
@@ -90,6 +91,20 @@ async function create(guild, uid, input, attachment) {
   await require('./developer-planning').save(guild.id,Number(result.lastInsertRowid),{...require('./developer-planning').defaults,reporterName,...category,...importance,reportType:input.reportType==='request'?'request':'bug',kind:input.reportType==='request'?'feature':category?.kind||'bug'});
   await require('./developer-audit').record(guild.id,Number(result.lastInsertRowid),uid,'created',{title:task.title,description:task.description,image:attachment?.name||null,category,importance});
   return get(guild.id, Number(result.lastInsertRowid));
+}
+async function notifyDevelopers(guild,task,summary,kind){
+  const cfg=(await settings.get(guild.id)).developer,channelId=cfg.messageNoticeChannel;
+  if(!channelId||!Array.isArray(cfg.roles)||!cfg.roles.length)return;
+  const channel=await guild.channels.fetch(channelId).catch(()=>null);
+  if(!channel?.isTextBased())return;
+  const roles=cfg.roles.filter(id=>guild.roles.cache.has(id));if(!roles.length)return;
+  const content=`📬 Du har fået en ${kind==='case'?'ny sag':'ny besked'} i udviklerpanelet · Sag #${task.id}: **${task.title}**\n${summary.slice(0,700)}\n${roles.map(id=>`<@&${id}>`).join(' ')}`;
+  await channel.send({content,allowedMentions:{parse:[],roles}});
+}
+async function reportCooldownActive(gid,uid,minutes,now=Date.now()){
+  const cooldown=Math.max(0,Math.min(10080,Number(minutes??1)));
+  if(!cooldown)return false;
+  return !!await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>? ORDER BY created_at DESC LIMIT 1').get(gid,uid,now-cooldown*60000);
 }
 function view(task) {
   const embed = new EmbedBuilder().setTitle(`#${task.id} · ${task.title}`.slice(0, 256)).setDescription(task.description || 'Ingen beskrivelse').setColor({ todo: 0x94a3b8, doing: 0xf59e0b, done: 0x22c55e, closed: 0x10b981, rejected: 0xef4444 }[task.status]).addFields({ name: 'Status', value: STATUS[task.status] }).setFooter({ text: 'Svar: /fejlsvar · Vedhæft billede: /fejlbillede id:'+task.id });
@@ -147,11 +162,15 @@ async function submit(i, title, description, attachment, categoryId='bug', custo
   if (!(await settings.get(i.guildId)).developer.enabled) throw new Error('Fejlmeldinger er deaktiveret');
   await i.deferReply({ flags: MessageFlags.Ephemeral });
   if(!await canReport(i.guild,i.user.id)) return i.editReply('Du skal have borgerrollen for at indsende en fejlmelding.');
-  const recent = await db.prepare('SELECT id FROM dev_tasks WHERE guild_id=? AND user_id=? AND created_at>?').all(i.guildId, i.user.id, Date.now() - 60000);
-  const recentTypes=await Promise.all(recent.map(t=>require('./developer-planning').get(i.guildId,t.id)));
-  if (recentTypes.some(p=>p.reportType===reportType)) return i.editReply('Vent et minut mellem fejlmeldinger.');
-  const category=require('./report-categories').normalize(categoryId,customCategory);
-  const task = await create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
+  let cooldown=1,task;
+  task=await require('./durable-state').serial('developer-submit:'+i.guildId+':'+i.user.id,async()=>{
+    cooldown=Math.max(0,Math.min(10080,Number((await settings.get(i.guildId)).developer.reportCooldownMinutes??1)));
+    if(await reportCooldownActive(i.guildId,i.user.id,cooldown))return null;
+    const category=require('./report-categories').normalize(categoryId,customCategory);
+    return create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
+  });
+  if(!task)return i.editReply(`Vent ${cooldown} minut${cooldown===1?'':'ter'} mellem nye sager.`);
+  notifyDevelopers(i.guild,task,task.description||task.title,'case').catch(e=>console.warn('[developer-notice]',e.message));
   await require('./report-panel').clearPrompt(i.guildId,i.user.id);
   // A normal DM remains editable after Discord interaction tokens expire.
   try {
@@ -196,4 +215,4 @@ async function remove(guild,id,uid) {
   await require('./developer-audit').record(guild.id,id,uid,'deleted',{title:task.title,status:task.status,notes:task.notes,checklist:task.checklist,description:task.description,planning:task.planning});
   await db.prepare('INSERT INTO dev_deleted (guild_id,task_id,user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(guild_id,task_id) DO NOTHING').run(guild.id,id,uid,Date.now());
 }
-module.exports = { STATUS,view, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction,onDirectReply,replyComponents };
+module.exports = { STATUS,view, get, create, update, remove, comment, sync, validate, canManage, canReport, sendPanel, onCommand, onInteraction,onDirectReply,replyComponents,notifyDevelopers,reportCooldownActive };

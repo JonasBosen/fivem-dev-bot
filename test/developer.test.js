@@ -66,6 +66,23 @@ test('citizens and developers can exchange comments without exposing internal no
   } finally {await db.close();}
 });
 
+test('citizen case replies ping only configured developer roles and cooldown is configurable across report types',async()=>{
+  await initDb();
+  try{
+    let sentPayload,resolveSent;const sent=new Promise(resolve=>resolveSent=resolve);
+    await settings.setModule('guild-notice','developer',{enabled:true,roles:['dev-role'],messageNoticeChannel:'private-channel'});
+    const guild={id:'guild-notice',roles:{cache:new Map([['dev-role',{}]])},channels:{fetch:async()=>({isTextBased:()=>true,send:async payload=>{sentPayload=payload;resolveSent();}})},members:{fetch:async({user})=>({permissions:{has:()=>false},roles:{cache:{has:id=>user==='dev'&&id==='dev-role'}}})},client:{users:{fetch:async()=>({send:async()=>{}})}}};
+    const task=await developer.create(guild,'citizen',{title:'Garage',description:'Løsning på sagen'});
+    await developer.comment(guild,task.id,'citizen','Ny information til udvikleren');await sent;
+    assert.match(sentPayload.content,/Du har fået en ny besked i udviklerpanelet/);
+    assert.match(sentPayload.content,/<@&dev-role>/);
+    assert.deepEqual(sentPayload.allowedMentions,{parse:[],roles:['dev-role']});
+    assert.equal(await developer.reportCooldownActive(guild.id,'citizen',5),true);
+    assert.equal(await developer.reportCooldownActive(guild.id,'citizen',0),false);
+    assert.equal(await developer.reportCooldownActive('other','citizen',5),false);
+  }finally{await db.close();}
+});
+
 test('configured citizen and manager roles grant separate access and removal takes effect',async()=>{
   await initDb();
   try {

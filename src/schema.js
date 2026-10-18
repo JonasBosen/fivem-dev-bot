@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS dev_deleted (guild_id TEXT NOT NULL, task_id INTEGER 
 CREATE TABLE IF NOT EXISTS dev_planning (guild_id TEXT NOT NULL, task_id INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(guild_id,task_id));
 CREATE TABLE IF NOT EXISTS dev_images (task_id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, mime TEXT NOT NULL, content TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS dev_tasks_guild ON dev_tasks(guild_id);
+CREATE INDEX IF NOT EXISTS dev_tasks_cooldown ON dev_tasks(guild_id,user_id,created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS dev_tasks_legacy ON dev_tasks(guild_id,legacy_id);
 `;
 const POSTGRES_SCHEMA = 'CREATE SCHEMA IF NOT EXISTS allbot;\n' + SQLITE_SCHEMA
