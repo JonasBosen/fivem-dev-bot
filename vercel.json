@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": null,
+  "regions": ["fra1"],
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
@@ -11,5 +12,14 @@
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
-  ]
+  ],
+  "daemons": {
+    "discord-bot": {
+      "root": ".",
+      "entrypoint": "Dockerfile",
+      "instances": { "fra1": 1 },
+      "resources": { "requests": { "memory": "1Gi" } },
+      "terminationGracePeriodSeconds": 15
+    }
+  }
 }

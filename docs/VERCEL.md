@@ -1,6 +1,9 @@
 # Panelet på Vercel
 
-Vercel kører kun **web-panelet** (`api/index.js`). Discord-botten med slash-kommandoer, musik, timere og livestream-tjek er en vedvarende proces og skal fortsat køre på en almindelig vært (fx Render med `npm start`). Panelet og botten deler samme Supabase-database.
+Alt kører på Vercel, uden Render, og deler samme Supabase-database:
+
+- **Webpanelet** er en Vercel Function (`api/index.js`) i Frankfurt (`fra1`, samme region som databasen).
+- **Discord-botten** (knapper, slash-kommandoer, timere, livestream-tjek, musik) kører som Vercel Daemon (`scripts/vercel-daemon.js` + `Dockerfile`) i Frankfurt. En lederlås i databasen sikrer, at kun én botproces er aktiv. Daemons er en beta; Hobby har 10 aktive CPU-timer pr. måned.
 
 ## Environment Variables i Vercel (Project → Settings → Environment Variables)
 
@@ -25,5 +28,5 @@ Tilføj `https://fivem-dev-bot.vercel.app/auth/callback` under OAuth2 → Redire
 - `vercel.json` sender alle adresser til `api/index.js`, som starter panelet første gang (database + Discord-forbindelse, typisk få sekunder) og genbruger det, mens instansen er varm.
 - Login-sessioner gemmes i databasen (`src/web/session-store.js`, tabellen `settings` med nøgler `session:<hash>`), fordi serverless-instanser ikke deler hukommelse.
 - Mangler en variabel eller fejler opstarten, svarer siden med `503` og en JSON med fejlkode og navne på manglende variabler (aldrig værdier).
-- Musik og andre funktioner, der kræver botten som vedvarende proces, virker ikke fra Vercel.
+- Funktioner, der kræver en vedvarende proces (musik, knapper, timere), håndteres af daemonen, ikke af funktionen.
 - `.vercelignore` udelader den gamle bot i projektets rod, så dens `public/index.html` ikke skygger for panelet.
