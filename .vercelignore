@@ -1,0 +1,11 @@
+# Den gamle bot i roden er kun reference; dens public-mappe ville ellers overskygge panelet på "/".
+/public
+/index.js
+/web.js
+/store.js
+/integrations
+/docs
+/test
+/data
+/scripts
+*.sql

@@ -11,7 +11,9 @@ const tickets = require('../modules/tickets');
 const applications = require('../modules/applications');
 const giveaways = require('../modules/giveaways');
 const community = require('../modules/community');
-const music = require('../modules/music-fleet');
+// Musikmodulet (discord-player, native lyd-pakker) indlæses først, når en musikrute bruges.
+// Det holder opstart hurtig og lader panelet køre på hosting uden lydstøtte, fx Vercel.
+const music = new Proxy({}, { get: (_, name) => (...args) => require('../modules/music-fleet')[name](...args) });
 const { parseDuration } = require('../util');
 
 const personal=require('../modules/personal-access');
@@ -20,9 +22,10 @@ const stream=require('../modules/stream-platforms');
 const {isManager}=require('../access');
 const API = 'https://discord.com/api/v10';
 
-function startWeb(client, { databaseReady = true, databaseError = '', listen = true, runtime } = {}) {
+function startWeb(client, { databaseReady = true, databaseError = '', listen = true, runtime, sessionStore } = {}) {
   const app = express();
-  const BASE = (process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '';
+  const BASE = (process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || vercelUrl || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
   const REDIRECT = `${BASE}/auth/callback`;
   const owners = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -31,6 +34,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.use((req,res,next)=> /(?:\/developer\/\d+\/files|\/media)$/.test(req.path) ? next() : express.json({limit:'1mb'})(req,res,next));
   app.use(session({
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+    ...(sessionStore ? { store: sessionStore } : {}),
     resave: false, saveUninitialized: false,
     cookie: { httpOnly: true, sameSite: 'lax', secure: BASE.startsWith('https'), maxAge: 7 * 864e5 },
   }));
@@ -38,7 +42,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.all('/integrations/txadmin/:gid',(req,res)=>res.status(410).json({error:'FiveM / txAdmin er fjernet'}));
   // ---------- Login ----------
   app.get(['/login', '/auth/login'], (req, res) => {
-    if (!databaseReady || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) return res.status(503).send('AllBot mangler opsætning. Tilføj DATABASE_URL, DISCORD_CLIENT_ID og DISCORD_CLIENT_SECRET i Render Environment.');
+    if (!databaseReady || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) return res.status(503).send('AllBot mangler opsætning. Tilføj database-forbindelsen (DATABASE_URL, eller SUPABASE_URL og SUPABASE_SERVICE_KEY), DISCORD_CLIENT_ID og DISCORD_CLIENT_SECRET under Environment hos hosting-udbyderen.');
     if(typeof req.query.next==='string'&&/^\/apply\/\d{17,20}\/[-a-z0-9_]{1,40}$/i.test(req.query.next))req.session.loginNext=req.query.next;
     req.session.state = crypto.randomBytes(16).toString('hex');
     const q = new URLSearchParams({ client_id: process.env.DISCORD_CLIENT_ID, redirect_uri: REDIRECT, response_type: 'code', scope: 'identify', state: req.session.state, prompt: 'none' });
