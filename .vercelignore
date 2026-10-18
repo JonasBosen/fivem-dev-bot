@@ -8,3 +8,9 @@
 /test
 /data
 *.sql
+
+/.env*
+/.vercel
+/node_modules
+/test-result.log
+/focused-tests.log

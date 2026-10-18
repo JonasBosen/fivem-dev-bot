@@ -36,6 +36,7 @@ const commandRoutes = {
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] Logget ind som ${c.user.tag} på ${c.guilds.cache.size} servere`);
+  require('./modules/changelog-format').ensure(c).then(()=>console.log('[changelog] Tre flueben klar')).catch(e=>console.warn('[changelog-emojis]',e.code||e.name));
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   require('./modules/staff-center').start(c);

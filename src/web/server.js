@@ -36,7 +36,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.use((req,res,next)=> /(?:\/developer\/\d+\/files|\/media)$/.test(req.path) ? next() : express.json({limit:'1mb'})(req,res,next));
   app.use(session({
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-    ...(sessionStore ? { store: sessionStore } : {}),
+    ...((sessionStore||process.env.NODE_ENV==='production')?{store:sessionStore||new (require('./session-store').DbSessionStore)(db)}:{}),
     resave: false, saveUninitialized: false,
     cookie: { httpOnly: true, sameSite: 'lax', secure: BASE.startsWith('https'), maxAge: 7 * 864e5 },
   }));
@@ -143,7 +143,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     if(req.params.action==='lock'){delete req.session.devGate;return {ok:true};}if(req.params.action==='unlock')return require('../modules/developer-gate').unlock(req.guild,req.session,req.body.pin,req.ip);throw new Error('Ukendt handling');
   }));
   const changelog=require('../modules/developer-changelog');
-  app.get('/api/guild/:gid/developer/changelog',auth,devAccess,wrap(async req=>({ai:await changelog.aiConfiguration(req.guild.id),canConfigureAI:!!req.panelIdentity.owner,config:await changelog.config(req.guild),drafts:await changelog.list(req.guild.id)})));
+  app.get('/api/guild/:gid/developer/changelog',auth,devAccess,wrap(async req=>{const [ai,config,drafts]=await Promise.all([changelog.aiConfiguration(req.guild.id),changelog.config(req.guild),changelog.list(req.guild.id)]);return {ai,config,drafts,canConfigureAI:!!req.panelIdentity.owner};}));
   app.put('/api/guild/:gid/developer/changelog/ai-key',auth,devAccess,ownerAccess,wrap(req=>changelog.saveKey(req.guild.id,req.session.user.id,req.body.apiKey)));
   app.delete('/api/guild/:gid/developer/changelog/ai-key',auth,devAccess,ownerAccess,wrap(req=>changelog.removeKey(req.guild.id,req.session.user.id)));
   app.get('/api/guild/:gid/developer/changelog/diagnostics',auth,devAccess,wrap(req=>changelog.diagnostics(req.guild.id)));
@@ -280,6 +280,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/guild/:gid/panel/:type', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
     const fn = { developer: developer.sendPanel, tickets: tickets.sendPanel, applications: applications.sendPanel, verification: community.sendVerifyPanel }[req.params.type];
     if (!fn) throw new Error('Ukendt panel');
+    await require('../modules/panel-diagnostics').destination(req.guild,req.body.channel);
     await fn(req.guild, req.body.channel,req.body.forms);
   }));
 
@@ -321,6 +322,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
   app.post('/api/apply/:gid/:fid/submit',applicant,wrap(req=>applications.submit(req.guild,req.session.user.id,req.params.fid,req.body.answers)));
   app.post('/api/guild/:gid/applications/:aid/redeliver',auth,guildAccess,wrap(req=>applications.delivery(req.guild,Number(req.params.aid))));
   app.get('/api/guild/:gid/applications-export',auth,guildAccess,wrap(async(req,res)=>{const rows=await applications.list(req.guild.id);const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,m=>"'"+m).replaceAll('"','""')+'"';const csv=[['ID','Formular','Discord-ID','Status','Oprettet','Behandler','Spørgsmål og svar'],...rows.map(r=>[r.id,r.metadata.form?.name||r.form_id,r.user_id,r.status,new Date(r.created_at).toISOString(),r.reviewed_by,JSON.stringify(r.answers)])].map(row=>row.map(cell).join(';')).join('\r\n');res.attachment('ansøgninger.csv').type('text/csv; charset=utf-8').send('\uFEFF'+csv);}));
+  app.get('/api/guild/:gid/diagnostics',auth,guildAccess,wrap(req=>require('../modules/panel-diagnostics').inspect(req.guild)));
   app.post('/api/guild/:gid/refresh-options',auth,guildAccess,wrap(async req=>{await Promise.all([req.guild.channels.fetch(),req.guild.roles.fetch()]);return {ok:true};}));
   // Tickets
   const userName = async (id) => (id ? (await client.users.fetch(id).catch(() => null))?.username || id : null);

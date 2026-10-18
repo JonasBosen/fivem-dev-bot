@@ -1,6 +1,8 @@
 // Kontrolpanel – ren JavaScript, ingen build-step.
 const $app = document.getElementById('app');
 let me = null, G = null, pollTimer = null;
+const apiReads=new Map();
+function api(path,opts={}){const read=!opts.method||opts.method==='GET';if(!read){apiReads.clear();return apiRequest(path,opts);}if(apiReads.has(path))return apiReads.get(path).then(v=>structuredClone(v));const pending=apiRequest(path,opts);apiReads.set(path,pending);pending.finally(()=>{if(apiReads.get(path)===pending)apiReads.delete(path);}).catch(()=>{});return pending.then(v=>structuredClone(v));}
 
 // ---------- Hjælpere ----------
 function h(tag, attrs = {}, ...kids) {
@@ -16,7 +18,7 @@ function h(tag, attrs = {}, ...kids) {
   for (const c of kids.flat()) if (c != null && c !== false) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return el;
 }
-async function api(path, opts = {}) {
+async function apiRequest(path, opts = {}) {
   const r = await fetch(path, { method: opts.method || 'GET',keepalive:!!opts.keepalive, headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
   if(r.status===428){if(me?.access)me.access.unlocked=false;queueMicrotask(()=>route());throw new Error('Lås op med din personlige kode');}
   if (r.status === 401) { location.href = '/login'; throw new Error('Log ind'); }
@@ -212,6 +214,8 @@ function panelCard(type, text) {
     }) }, 'Send panel'))));
 }
 
+function diagnosticsCard(){const results=h('div'),button=h('button',{class:'btn sec',onclick:run(async()=>{const d=await api('/api/guild/'+G.id+'/diagnostics');results.replaceChildren(h('p',{},d.hosting+' · '+d.database+' · '+date(d.checkedAt)),h('h3',{},'Discord-kanaler'),...d.channels.map(c=>h('p',{class:c.ready?'muted':'err'},(c.ready?'✓ ':'⚠ ')+c.name+(c.ready?' · klar':' · mangler '+c.missing.join(', ')))),h('h3',{},'Automatiske roller'),...d.autoRoles.map(r=>h('p',{class:r.ready?'muted':'err'},r.name+(r.ready?' · klar':' · tjek Administrér roller og bottens placering i rollelisten'))),h('p',{},'Support-log: '+(d.supportLog.private?'privat kanal registreret':d.supportLog.configured?'kontrollér kanalens adgang':'oprettes privat ved første supportsag, hvis botten har rettigheder')),h('p',{class:'muted'},d.note));})},'Kontrollér kanaler og roller');return h('div',{class:'card'},h('h2',{},'Drift og panelkontrol'),h('p',{class:'muted'},'Se hvilke kanaler botten kan oprette paneler i, og om automatiske roller kan tildeles.'),button,results);}
+
 // ---------- Sider ----------
 const PAGES = [
   ['staff','🛡️','Staff-panel'],
@@ -233,6 +237,7 @@ const pages = {
     return [
       h('div', { class: 'stats' }, stat(G.members, 'Medlemmer'), stat(s.openTickets, 'Åbne supportsager'), stat(s.totalTickets, 'Supportsager i alt'),
         stat(s.pendingApps, 'Ansøgninger der venter'), stat(s.activeGiveaways, 'Aktive giveaways'), stat(s.warnings, 'Advarsler')),
+      diagnosticsCard(),
       h('div', { class: 'card' }, h('h2', {}, 'Kom godt i gang'),
         h('ol', { class: 'muted' },
           h('li', {}, 'Tickets: vælg support-roller og log-kanal, og send panelet.'),
@@ -258,7 +263,7 @@ const pages = {
       h('td', {}, h('span', { class: `badge ${t.status}` }, t.status === 'open' ? 'Åben' : 'Lukket')),
       h('td', {}, t.claimed || '–'), h('td', {}, date(t.created_at)),
       h('td', {}, t.status === 'open'
-        ? h('button', { class: 'btn bad sm', onclick: run(async () => { await api(`/api/guild/${G.id}/tickets/${t.id}/close`, { method: 'POST' }); toast('Ticket lukket'); setTimeout(route, 1500); }) }, 'Luk')
+        ? h('button', { class: 'btn bad sm', onclick: run(async () => { await api(`/api/guild/${G.id}/tickets/${t.id}/close`, { method: 'POST' }); toast('Ticket lukket'); await route(); }) }, 'Luk')
         : h('a', { class: 'btn sec sm', href: `/api/guild/${G.id}/tickets/${t.id}/transcript`, target: '_blank' }, 'Transcript')));
     const tab = (k, l) => h('button', { class: 'btn sec sm', onclick: () => { filter = k; draw(); } }, l);
     draw();
@@ -401,6 +406,7 @@ async function route() {
 }
 
 (async function boot() {
+  const identity=fetch('/api/me');
   const setup = await fetch('/api/setup').then((r) => r.json());
   if (!setup.loginReady) {
     $app.replaceChildren(h('div', { class: 'center' }, h('div', { class: 'card' },
@@ -408,14 +414,14 @@ async function route() {
       h('p', { class: 'muted' }, 'Dit online dashboard er klar. Forbind Supabase og Discord for at aktivere botten.'),
       h('p', {}, `Database: ${setup.databaseReady ? 'tilsluttet' : 'mangler forbindelse'}`),
       h('p', {}, `Discord-bot: ${setup.botReady ? 'online' : 'afventer opsætning'}`),
-      h('p', {}, 'Forbindelsen bruger SUPABASE_URL og SUPABASE_SERVICE_KEY på Render.'),
+      h('p', {}, 'Forbindelsen bruger SUPABASE_URL og SUPABASE_SERVICE_KEY på Vercel.'),
       ...Object.entries({discordToken:'DISCORD_TOKEN',discordClientId:'DISCORD_CLIENT_ID',discordClientSecret:'DISCORD_CLIENT_SECRET',supabaseUrl:'SUPABASE_URL',supabaseKey:'SUPABASE_SERVICE_KEY'}).map(([key,label])=>h('p',{},label+': '+(setup.credentials?.[key]?'udfyldt':'mangler'))),
       setup.databaseError && h('p',{},'Databasefejl: '+({'SUPABASE_HTTP_401':'Supabase-nøglen blev afvist. Kontrollér den kopierede nøgle.','SUPABASE_HTTP_403':'Nøglen mangler backendadgang. Brug service_role/secret-nøglen.','SUPABASE_HTTP_404':'Databasefunktionen kunne ikke findes.','SUPABASE_PROJECT_MISMATCH':'Supabase-adressen peger på et andet projekt.'}[setup.databaseError]||setup.databaseError)),
-      h('a',{class:'btn',href:'https://dashboard.render.com/web/srv-db8b651srm7s73e1rtq0/env',target:'_blank',rel:'noopener'},'Åbn indstillinger på Render'),
+      h('a',{class:'btn',href:'https://vercel.com/lokkes-fivem-dev/fivem-dev-bot/settings/environment-variables',target:'_blank',rel:'noopener'},'Åbn indstillinger på Vercel'),
       h('p', {}, 'Discord OAuth2 Redirect: ', h('code', {}, setup.callbackUrl)))));
     return;
   }
-  const r = await fetch('/api/me');
+  const r = await identity;
   if (r.status === 401) {
     $app.replaceChildren(h('div', { class: 'center' }, h('div', {},
       h('h1', { style: 'font-size:30px' }, 'Alle bots samlet'),

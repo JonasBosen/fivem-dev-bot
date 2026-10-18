@@ -113,9 +113,9 @@ async function sync(client, task) {
     const channel = await client.channels.fetch(task.channel_id);
     const message = await channel.messages.fetch(task.message_id);
     await message.edit(view(task));
-    await db.prepare('UPDATE dev_tasks SET sync_error=? WHERE guild_id=? AND id=?').run('', task.guild_id, task.id);
+    task.sync_error='';await db.prepare('UPDATE dev_tasks SET sync_error=? WHERE guild_id=? AND id=?').run('', task.guild_id, task.id);
   } catch {
-    await db.prepare('UPDATE dev_tasks SET sync_error=? WHERE guild_id=? AND id=?').run('Discord-beskeden kunne ikke opdateres. Prøv igen.', task.guild_id, task.id);
+    task.sync_error='Discord-beskeden kunne ikke opdateres. Prøv igen.';await db.prepare('UPDATE dev_tasks SET sync_error=? WHERE guild_id=? AND id=?').run(task.sync_error, task.guild_id, task.id);
   }
 }
 async function update(guild, id, input, uid) {
@@ -125,17 +125,16 @@ async function update(guild, id, input, uid) {
   if (!previous) throw new Error('Sagen findes ikke');
   const planning=require('./developer-planning').validate(input.planning||previous.planning);if(planning.reportType!==previous.planning.reportType)throw new Error('Fejl og ønsker tilhører separate paneler og kan ikke flyttes mellem dem');
   if(planning.columnId&&input.status!==previous.status){const columns=await require('./developer-board').get(guild.id,previous.planning.reportType);if(columns.find(c=>c.id===planning.columnId)?.status!==input.status)planning.columnId='';}
-  const reporter=await guild.client?.users?.fetch?.(previous.user_id).catch(()=>null);planning.reporterName=reporter?.globalName||reporter?.username||previous.planning.reporterName||previous.user_id;
+  const reporter=guild.client?.users?.cache?.get(previous.user_id)||(!previous.planning.reporterName?await guild.client?.users?.fetch?.(previous.user_id).catch(()=>null):null);planning.reporterName=reporter?.globalName||reporter?.username||previous.planning.reporterName||previous.user_id;
   if(input.status==='doing'&&previous.status!=='doing'&&!planning.developers.some(d=>d.id===uid)){if(planning.developers.length>=20)throw new Error('Der er allerede tilknyttet 20 udviklere');planning.developers.push({id:uid,name:uid});}
-  for(const assigned of planning.developers){if(!previous.planning.developers?.some(d=>d.id===assigned.id)&&assigned.id!==uid&&!(await require('./personal-access').roles(guild,assigned.id)).developer)throw new Error('Den valgte person har ikke udvikleradgang');const user=await guild.client?.users?.fetch?.(assigned.id).catch(()=>null);assigned.name=user?.globalName||user?.username||assigned.name||assigned.id;}
+  for(const assigned of planning.developers){if(!previous.planning.developers?.some(d=>d.id===assigned.id)&&assigned.id!==uid&&!(await require('./personal-access').roles(guild,assigned.id)).developer)throw new Error('Den valgte person har ikke udvikleradgang');const user=guild.client?.users?.cache?.get(assigned.id)||(assigned.name&&assigned.name!==assigned.id?null:await guild.client?.users?.fetch?.(assigned.id).catch(()=>null));assigned.name=user?.globalName||user?.username||assigned.name||assigned.id;}
   if (!Number.isSafeInteger(input.version)) throw new Error('Version mangler');
   const result = await db.prepare('UPDATE dev_tasks SET title=?,description=?,status=?,notes=?,checklist=?,updated_at=?,version=version+1 WHERE guild_id=? AND id=? AND version=?').run(input.title.trim(), input.description, input.status, input.notes, JSON.stringify(input.checklist), Date.now(), guild.id, id, input.version);
   if (!result.changes) throw new Error('En anden har ændret sagen. Genindlæs før du gemmer.');
   await require('./developer-planning').save(guild.id,id,planning);
-  await require('./developer-audit').record(guild.id,id,uid,input.status==='rejected'?'rejected':'updated',{before:{title:previous.title,description:previous.description,status:previous.status,notes:previous.notes,checklist:previous.checklist,planning:previous.planning},after:{title:input.title,description:input.description,status:input.status,notes:input.notes,checklist:input.checklist,planning}});
-  await db.prepare('INSERT INTO dev_history (guild_id,task_id,user_id,status,created_at) VALUES (?,?,?,?,?)').run(guild.id, id, uid, input.status, Date.now());
-  await sync(guild.client, await get(guild.id, id));
-  return get(guild.id, id);
+  await Promise.all([require('./developer-audit').record(guild.id,id,uid,input.status==='rejected'?'rejected':'updated',{before:{title:previous.title,description:previous.description,status:previous.status,notes:previous.notes,checklist:previous.checklist,planning:previous.planning},after:{title:input.title,description:input.description,status:input.status,notes:input.notes,checklist:input.checklist,planning}}),
+  db.prepare('INSERT INTO dev_history (guild_id,task_id,user_id,status,created_at) VALUES (?,?,?,?,?)').run(guild.id, id, uid, input.status, Date.now())]);
+  const updated=await get(guild.id,id);await sync(guild.client,updated);return updated;
 }
 async function sendPanel(guild, channelId) {
   const config = (await settings.get(guild.id)).developer;

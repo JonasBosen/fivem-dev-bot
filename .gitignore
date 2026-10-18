@@ -2,3 +2,9 @@
 data/
 node_modules/
 dist
+
+.env.local
+.env.*.local
+.vercel/
+test-result.log
+focused-tests.log

@@ -1,5 +1,5 @@
 // Vercel-indgang: kører kun web-panelet (ikke Discord-botten med kommandoer, musik og timere).
-// Botten skal fortsat køre på en vedvarende vært (fx Render via `npm start`).
+// Discord-botten kører i projektets Vercel Daemon; begge bruger den fælles Supabase-database.
 //
 // Panelet bruger Discord-forbindelsen til at slå roller, kanaler og medlemmer op. Derfor logger
 // denne funktion ind med samme bot-token, men uden nogen event-handlers, så den ikke svarer på
@@ -17,6 +17,7 @@ if (!process.env.SESSION_SECRET && process.env.DISCORD_TOKEN) {
 const READY_TIMEOUT_MS = 25000;
 let booting;
 let client;
+let gatewayReady;
 
 function missingEnv() {
   const missing = [];
@@ -49,15 +50,8 @@ async function boot() {
   client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
   client.on(Events.Error, (error) => console.warn('[discord]', error.code || error.name));
   client.on(Events.ShardError, (error) => console.warn('[discord-forbindelse]', error.code || error.name));
-  const ready = new Promise((resolve) => client.once(Events.ClientReady, resolve));
-  try {
-    await client.login(process.env.DISCORD_TOKEN);
-    await waitFor(ready, READY_TIMEOUT_MS, 'DISCORD_NOT_READY');
-  } catch (error) {
-    await client.destroy();
-    client = undefined;
-    throw error;
-  }
+  gatewayReady=(async()=>{const ready=new Promise(resolve=>client.once(Events.ClientReady,resolve));await client.login(process.env.DISCORD_TOKEN);await waitFor(ready,READY_TIMEOUT_MS,'DISCORD_NOT_READY');})();
+  gatewayReady.catch(error=>{console.warn('[discord-start]',error.code||error.name);booting=undefined;client?.destroy();});
   return startWeb(client, { listen: false, sessionStore: new DbSessionStore(db) });
 }
 
@@ -76,6 +70,10 @@ function describe(error) {
 module.exports = async (req, res) => {
   try {
     const app = await getApp();
+    const pathname=new URL(req.url,'https://localhost').pathname;
+    // OAuth and the public login screen do not need to wait for the gateway handshake.
+    const publicRoute=/^\/(?:api\/setup|login|logout|auth\/(?:login|callback)|callback|health|ready)$/.test(pathname)||pathname==='/api/me'&&!req.headers.cookie;
+    if(!publicRoute)await gatewayReady;
     // Vercel kan have en lazy `req.body`, som ville æde forespørgslens stream før express.json() når at læse den.
     try { Object.defineProperty(req, 'body', { value: undefined, writable: true, configurable: true, enumerable: true }); } catch { /* ingen lazy body */ }
     return app(req, res);

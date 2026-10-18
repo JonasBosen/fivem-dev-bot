@@ -25,14 +25,15 @@ async function renderDeveloperWorkspace(isWishes=false) {
   async function move(id,state,beforeId){
     if(moving||!canLeave())return;moving=true;
     try{
-      const task=await api(`${base}/${id}`);
+      const task=tasks.find(t=>t.id===id);if(!task)throw Error('Sagen findes ikke i oversigten. Hent nye sager.');
       const target=columns.find(c=>c.id===state);if(!target)throw new Error('Kolonnen findes ikke');
       const lane=tasks.filter(t=>t.id!==id&&columnForTask(t)===state&&!!t.planning?.archived===(archiveFilter.value==='archived')).sort((a,b)=>rank(a)-rank(b));
       let index=beforeId?lane.findIndex(t=>t.id===beforeId):lane.length;if(index<0)index=lane.length;
       const left=index>0?rank(lane[index-1]):(lane[index]?rank(lane[index])-2048:0);
       const right=lane[index]?rank(lane[index]):left+2048;
-      await api(`${base}/${id}`,{method:'PUT',body:{...task,status:target.status,planning:{...task.planning,columnId:state,priority:state==='critical'?'critical':state==='todo'&&task.planning.priority==='critical'?'normal':task.planning.priority,position:(left+right)/2}}});
-      if(windows.has(id)&&!windows.get(id).dirty)await open(id,true);await refresh();toast('Opgaven er flyttet og gemt');
+      const patch={...task,status:target.status,planning:{...task.planning,columnId:state,priority:state==='critical'?'critical':state==='todo'&&task.planning.priority==='critical'?'normal':task.planning.priority,position:(left+right)/2}};
+      tasks=tasks.map(t=>t.id===id?patch:t);draw();saveInfo.textContent='Gemmer flytningen…';
+      try{const saved=await api(base+'/'+id,{method:'PUT',body:patch});tasks=tasks.map(t=>t.id===id?{...t,...saved}:t);draw();saveInfo.textContent='Flytningen er gemt';if(windows.has(id)&&!windows.get(id).dirty)await open(id,true).catch(e=>toast('Sagen blev gemt, men visningen kunne ikke opdateres: '+e.message,true));toast(saved.sync_error||'Opgaven er flyttet og gemt',!!saved.sync_error);}catch(error){tasks=tasks.map(t=>t.id===id?task:t);draw();saveInfo.textContent='Flytningen blev ikke gemt – hent nye sager';throw error;}
     }finally{moving=false;dragged=null;}
   }
   const columnForTask=t=>{const assigned=t.planning?.columnId;if(assigned)return columns.some(c=>c.id===assigned)?assigned:'unassigned';const baseLane=taskLane(t);return columns.some(c=>c.id===baseLane)?baseLane:'unassigned';};
