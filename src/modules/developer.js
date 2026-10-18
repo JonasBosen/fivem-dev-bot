@@ -42,7 +42,7 @@ async function comment(guild,id,uid,text,asDeveloper=false) {
   await db.prepare('INSERT INTO dev_comments (guild_id,task_id,user_id,author_type,body,created_at) VALUES (?,?,?,?,?,?)').run(guild.id,id,uid,asDeveloper?'developer':'citizen',text.trim(),Date.now());
   await require('./developer-audit').record(guild.id,id,uid,'comment',{author:asDeveloper?'developer':'citizen',text:text.trim()});
   await db.prepare('UPDATE dev_tasks SET updated_at=? WHERE guild_id=? AND id=?').run(Date.now(),guild.id,id);
-  if(!asDeveloper)notifyDevelopers(guild,task,text.trim(),'message').catch(e=>console.warn('[developer-notice]',e.message));
+  if(!asDeveloper)notifyDevelopers(guild,task,'message').catch(e=>console.warn('[developer-notice]',e.message));
   const updated = await get(guild.id,id);
   await sync(guild.client,updated);
   if(asDeveloper && task.user_id!==uid) {
@@ -92,13 +92,13 @@ async function create(guild, uid, input, attachment) {
   await require('./developer-audit').record(guild.id,Number(result.lastInsertRowid),uid,'created',{title:task.title,description:task.description,image:attachment?.name||null,category,importance});
   return get(guild.id, Number(result.lastInsertRowid));
 }
-async function notifyDevelopers(guild,task,summary,kind){
+async function notifyDevelopers(guild,task,kind){
   const cfg=(await settings.get(guild.id)).developer,channelId=cfg.messageNoticeChannel;
   if(!channelId||!Array.isArray(cfg.roles)||!cfg.roles.length)return;
   const channel=await guild.channels.fetch(channelId).catch(()=>null);
   if(!channel?.isTextBased())return;
   const roles=cfg.roles.filter(id=>guild.roles.cache.has(id));if(!roles.length)return;
-  const content=`📬 Du har fået en ${kind==='case'?'ny sag':'ny besked'} i udviklerpanelet · Sag #${task.id}: **${task.title}**\n${summary.slice(0,700)}\n${roles.map(id=>`<@&${id}>`).join(' ')}`;
+  const content=`📬 Du har fået en ${kind==='case'?'ny sag':'ny besked'} i udviklerpanelet · Sag #${task.id}: **${task.title}**\n${roles.map(id=>`<@&${id}>`).join(' ')}`;
   await channel.send({content,allowedMentions:{parse:[],roles}});
 }
 async function reportCooldownActive(gid,uid,minutes,now=Date.now()){
@@ -170,7 +170,7 @@ async function submit(i, title, description, attachment, categoryId='bug', custo
     return create(i.guild, i.user.id, { title, description,reportType,...category,...require('./report-form').importance(priorityId,customPriority) }, attachment);
   });
   if(!task)return i.editReply(`Vent ${cooldown} minut${cooldown===1?'':'ter'} mellem nye sager.`);
-  notifyDevelopers(i.guild,task,task.description||task.title,'case').catch(e=>console.warn('[developer-notice]',e.message));
+  notifyDevelopers(i.guild,task,'case').catch(e=>console.warn('[developer-notice]',e.message));
   await require('./report-panel').clearPrompt(i.guildId,i.user.id);
   // A normal DM remains editable after Discord interaction tokens expire.
   try {
