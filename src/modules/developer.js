@@ -99,7 +99,7 @@ async function notifyDevelopers(guild,task,kind){
   if(!channel?.isTextBased())return;
   const roles=cfg.roles.filter(id=>guild.roles.cache.has(id));if(!roles.length)return;
   const content=`📬 Du har fået en ${kind==='case'?'ny sag':'ny besked'} i udviklerpanelet · Sag #${task.id}: **${task.title}**\n${roles.map(id=>`<@&${id}>`).join(' ')}`;
-  await channel.send({content,allowedMentions:{parse:[],roles}});
+  await require('./developer-notices').send(guild,task,kind,channel,{content,allowedMentions:{parse:[],roles}});
 }
 async function reportCooldownActive(gid,uid,minutes,now=Date.now()){
   const cooldown=Math.max(0,Math.min(10080,Number(minutes??1)));
