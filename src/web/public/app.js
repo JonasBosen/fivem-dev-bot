@@ -19,7 +19,7 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 async function apiRequest(path, opts = {}) {
-  const r = await fetch(path, { method: opts.method || 'GET',keepalive:!!opts.keepalive, headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const r = await fetch(path, { method: opts.method || 'GET',keepalive:!!opts.keepalive, signal:AbortSignal.timeout(30000), headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
   if(r.status===428){if(me?.access)me.access.unlocked=false;queueMicrotask(()=>route());throw new Error('Lås op med din personlige kode');}
   if (r.status === 401) { location.href = '/login'; throw new Error('Log ind'); }
   const j = await r.json().catch(() => ({}));
@@ -405,9 +405,9 @@ async function route() {
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
-(async function boot() {
-  const identity=fetch('/api/me');
-  const setup = await fetch('/api/setup').then((r) => r.json());
+(async function boot() { try {
+  const identity=fetch('/api/me',{signal:AbortSignal.timeout(30000)});
+  const setup = await fetch('/api/setup',{signal:AbortSignal.timeout(30000)}).then((r) => r.json());
   if (!setup.loginReady) {
     $app.replaceChildren(h('div', { class: 'center' }, h('div', { class: 'card' },
       h('h1', {}, 'Alle bots samlet'),
@@ -429,7 +429,10 @@ async function route() {
       h('a', { class: 'btn', href: '/login' }, 'Log ind med Discord'))));
     return;
   }
-  me = await r.json();
+  const identityData=await r.json();
+  if(!r.ok)throw new Error(identityData.error||'Panelet kunne ikke hente din adgang. Prøv igen om lidt.');
+  me = identityData;
   window.addEventListener('hashchange', route);
-  route();
+  await route();
+ }catch(error){$app.replaceChildren(h('div',{class:'center'},h('div',{class:'card'},h('h1',{},'Panelet kunne ikke indlæses'),h('p',{},error.name==='TimeoutError'?'Serveren svarede ikke i tide. Prøv igen om lidt.':error.message),h('button',{class:'btn',onclick:()=>location.reload()},'Prøv igen'))));}
 })();
