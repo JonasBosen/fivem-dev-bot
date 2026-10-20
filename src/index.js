@@ -97,7 +97,10 @@ process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
 client.on(Events.Error,error=>console.warn('[discord]',error.code||error.name));
 client.on(Events.ShardError,error=>console.warn('[discord-forbindelse]',error.code||error.name));
-const runtime=require('./service-runtime').createRuntime({initDb,probe:()=>db.prepare('SELECT data FROM settings WHERE guild_id = ?').get('__runtime_check__'),isReady:()=>!process.env.DISCORD_TOKEN||client.isReady(),connect:()=>client.login(process.env.DISCORD_TOKEN)});
+const runtime=require('./service-runtime').createRuntime({initDb,probe:()=>db.prepare('SELECT data FROM settings WHERE guild_id = ?').get('__runtime_check__'),isReady:()=>!process.env.DISCORD_TOKEN||client.isReady(),connect:async()=>{
+  if(process.env.BOT_LEADER_LOCK==='1')await require('../scripts/vercel-daemon').leadership;
+  return client.login(process.env.DISCORD_TOKEN);
+}});
 const web=startWeb(client,{runtime,listen:false});const server=web.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log('[dashboard] Serveren lytter på HTTP'));
 runtime.start().catch(error=>console.error('[start]',error.code||error.name));
 let stopping=false;async function shutdown(){if(stopping)return;stopping=true;runtime.stop();const deadline=setTimeout(()=>process.exit(0),10000);deadline.unref();server.close();await client.destroy();await db.close();clearTimeout(deadline);process.exit(0);}

@@ -22,10 +22,14 @@ async function main() {
   while (!stopping) {
     try { await lease(); break; } catch (error) { if (error.message !== 'LEADER_BUSY') throw error; await wait(3000); }
   }
-  if (stopping) return;
-  process.env.PORT ||= '3000';
-  require('../src/index');
+  if (stopping) throw Error('DAEMON_STOPPING');
   const renew = setInterval(() => lease().catch(() => process.kill(process.pid, 'SIGTERM')), 10000);
   renew.unref();
 }
-main().catch((error) => { console.error('[daemon]', error.message); process.exit(1); });
+// Bind HTTP before waiting for the old instance's lease. Render must be able
+// to start routing to this instance before it retires the old lease owner.
+process.env.BOT_LEADER_LOCK = '1';
+const leadership = main();
+module.exports = { leadership };
+leadership.catch((error) => { console.error('[daemon]', error.message); process.exit(1); });
+require('../src/index');
