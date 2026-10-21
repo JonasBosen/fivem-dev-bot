@@ -111,7 +111,6 @@ const SCHEMA = {
     {k:'allowCitizenClose',t:'toggle',l:'Borgeren må selv lukke sin sag'},
     { k: 'maxOpenPerUser', t: 'number', l: 'Maks åbne tickets pr. bruger', min: 1 },
     { k: 'categoryId', t: 'category', l: 'Kategori nye tickets oprettes i' },
-    { k: 'logChannel', t: 'channel', l: 'Privat support-logkanal (ingen HTML-filer eller private beskeder)' },
     { k: 'supportRoles', t: 'roles', l: 'Support-roller', wide: true },
     { k: 'panelTitle', l: 'Panel: titel' },
     { k: 'panelText', t: 'textarea', l: 'Panel: tekst' },
@@ -214,7 +213,7 @@ function panelCard(type, text) {
     }) }, 'Send panel'))));
 }
 
-function diagnosticsCard(){const results=h('div'),button=h('button',{class:'btn sec',onclick:run(async()=>{const d=await api('/api/guild/'+G.id+'/diagnostics');results.replaceChildren(h('p',{},d.hosting+' · '+d.database+' · '+date(d.checkedAt)),h('h3',{},'Discord-kanaler'),...d.channels.map(c=>h('p',{class:c.ready?'muted':'err'},(c.ready?'✓ ':'⚠ ')+c.name+(c.ready?' · klar':' · mangler '+c.missing.join(', ')))),h('h3',{},'Automatiske roller'),...d.autoRoles.map(r=>h('p',{class:r.ready?'muted':'err'},r.name+(r.ready?' · klar':' · tjek Administrér roller og bottens placering i rollelisten'))),h('p',{},'Support-log: '+(d.supportLog.private?'privat kanal registreret':d.supportLog.configured?'kontrollér kanalens adgang':'oprettes privat ved første supportsag, hvis botten har rettigheder')),h('p',{class:'muted'},d.note));})},'Kontrollér kanaler og roller');return h('div',{class:'card'},h('h2',{},'Drift og panelkontrol'),h('p',{class:'muted'},'Se hvilke kanaler botten kan oprette paneler i, og om automatiske roller kan tildeles.'),button,results);}
+function diagnosticsCard(){const results=h('div'),button=h('button',{class:'btn sec',onclick:run(async()=>{const d=await api('/api/guild/'+G.id+'/diagnostics');results.replaceChildren(h('p',{},d.hosting+' · '+d.database+' · '+date(d.checkedAt)),h('h3',{},'Discord-kanaler'),...d.channels.map(c=>h('p',{class:c.ready?'muted':'err'},(c.ready?'✓ ':'⚠ ')+c.name+(c.ready?' · klar':' · mangler '+c.missing.join(', ')))),h('h3',{},'Automatiske roller'),...d.autoRoles.map(r=>h('p',{class:r.ready?'muted':'err'},r.name+(r.ready?' · klar':' · tjek Administrér roller og bottens placering i rollelisten'))),h('p',{},'Supportlogs sendes ikke til Discord'),h('p',{class:'muted'},d.note));})},'Kontrollér kanaler og roller');return h('div',{class:'card'},h('h2',{},'Drift og panelkontrol'),h('p',{class:'muted'},'Se hvilke kanaler botten kan oprette paneler i, og om automatiske roller kan tildeles.'),button,results);}
 
 // ---------- Sider ----------
 const PAGES = [

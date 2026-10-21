@@ -32,16 +32,6 @@ async function sendPanel(guild, channelId) {
   return msg;
 }
 
-const logChannels=new Map();
-async function supportLog(guild,cfg,payload,citizenId){
- try{let channel=cfg.logChannel&&await guild.channels.fetch(cfg.logChannel).catch(()=>null);const citizen=await guild.members.fetch(citizenId).catch(()=>null);
- const privateChannel=ch=>ch?.isTextBased()&&ch.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel)===false&&(!citizen||!ch.permissionsFor(citizen)?.has(PermissionFlagsBits.ViewChannel));
- if(!privateChannel(channel)){
-  let pending=logChannels.get(guild.id);if(!pending){pending=(async()=>{const ch=await guild.channels.create({name:'support-log',type:ChannelType.GuildText,topic:'Privat log for supportsager – ingen HTML-filer eller private beskeder',permissionOverwrites:[{id:guild.id,deny:[PermissionFlagsBits.ViewChannel]},{id:guild.members.me.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.EmbedLinks]},...[...new Set([...cfg.supportRoles,...cfg.types.flatMap(t=>t.supportRoles||[])])].filter(id=>guild.roles.cache.has(id)).map(id=>({id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ReadMessageHistory]}))]});await settings.setModule(guild.id,'tickets',{...(await settings.get(guild.id)).tickets,logChannel:ch.id});return ch;})().finally(()=>logChannels.delete(guild.id));logChannels.set(guild.id,pending);}channel=await pending;
- }
- if(!privateChannel(channel)){console.warn('[support-log] Ingen sikker privat logkanal tilgængelig');return;}await channel.send(payload);
- }catch(e){console.warn('[support-log]',e.code||e.name);}
-}
 
 function isStaff(member, cfg, typeId) {
   return isAdmin(member) || hasAnyRole(member,[...cfg.supportRoles,...(cfg.types.find(t=>t.id===typeId)?.supportRoles||[])]);
@@ -100,7 +90,6 @@ async function createTicket(member, type, answers) {
   const pings = [`<@${member.id}>`, ...supportRoles.filter(Boolean).map((r) => `<@&${r}>`)].join(' ');
   const components=[row];if(cfg.quickResponses?.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('ticket:quick').setPlaceholder('Hurtigsvar til borgeren (support)').addOptions(cfg.quickResponses.slice(0,25).map((q,i)=>({label:q.label.slice(0,100),value:String(i)})))));
   await channel.send({ content:pings,embeds:[e],components,allowedMentions:{parse:[],users:[member.id],roles:supportRoles} });
-  await supportLog(guild,cfg,{embeds:[embed('Support-sag åbnet',`#${id} · ${type.label} · <@${member.id}> · ${channel}`)],allowedMentions:{parse:[]}},member.id);
   return channel;
 }
 
@@ -128,7 +117,6 @@ async function closeTicket(guild, ticket, closerId, reason = '') {
   let transcript = '';
   if (channel) transcript = await buildTranscript(channel, ticket).catch(() => '');
   (await db.prepare("UPDATE tickets SET status='closed', closed_at=?, closed_by=?, transcript=? WHERE id=?").run(Date.now(), closerId, transcript, ticket.id));
-  await supportLog(guild,cfg,{embeds:[embed('Support-sag lukket',`#${ticket.id} · Oprettet af <@${ticket.user_id}> · Lukket af <@${closerId}>${reason?'\nBegrundelse: '+reason:''}`,0xed4245)],allowedMentions:{parse:[]}},ticket.user_id);
   if (channel) setTimeout(() => channel.delete('Ticket lukket').catch(() => {}), 4000);
 }
 
@@ -192,4 +180,4 @@ async function onCommand(interaction) {
   }
 }
 
-module.exports = { supportLog, sendPanel, closeTicket, onInteraction, onCommand };
+module.exports = { sendPanel, closeTicket, onInteraction, onCommand };
