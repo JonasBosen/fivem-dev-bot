@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { initDb } = require('../src/db');
 const state = require('../src/modules/durable-state');
 const owner = crypto.randomUUID(), leaseKey = 'hosting-bot-leader';
+const service=process.env.RENDER_SERVICE_ID||'external';
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let stopping = false;
 process.once('SIGTERM', () => { stopping = true; });
@@ -12,8 +13,11 @@ process.once('SIGINT', () => { stopping = true; });
 
 // Lederlås: forhindrer at to botprocesser (fx ved overlappende deployments) kører samtidig.
 const lease = () => state.write(leaseKey, (value) => {
-  if (value.owner && value.owner !== owner && value.until > Date.now()) throw Error('LEADER_BUSY');
-  return { owner, until: Date.now() + 30000, service:process.env.RENDER_SERVICE_ID||'external', instance:process.env.RENDER_INSTANCE_ID||'', commit:process.env.RENDER_GIT_COMMIT||process.env.VERCEL_GIT_COMMIT_SHA||'' };
+  if(value.preferredService&&value.preferredService!==service)throw Error('LEADER_BUSY');
+  const handoff=value.owner==='handoff'&&value.preferredService===service;
+  if(handoff&&Date.now()<Number(value.handoffAt||0))throw Error('LEADER_BUSY');
+  if (!handoff&&value.owner && value.owner !== owner && value.until > Date.now()) throw Error('LEADER_BUSY');
+  return { owner, until: Date.now() + 30000, preferredService:value.preferredService, service, instance:process.env.RENDER_INSTANCE_ID||'', commit:process.env.RENDER_GIT_COMMIT||process.env.VERCEL_GIT_COMMIT_SHA||'' };
 });
 
 async function main() {
