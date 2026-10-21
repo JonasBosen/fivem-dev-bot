@@ -1,5 +1,5 @@
 require('dotenv').config({ quiet: true });
-const { Client, GatewayIntentBits, Events, ActivityType, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, Events, ActivityType, MessageFlags, Partials } = require('discord.js');
 const { register } = require('./commands');
 process.env.DISCORD_CLIENT_ID ||= process.env.CLIENT_ID;
 process.env.DISCORD_CLIENT_SECRET ||= process.env.CLIENT_SECRET;
@@ -16,11 +16,13 @@ const { startWeb } = require('./web/server');
 const { initDb,db } = require('./db');
 
 const client = new Client({
+  partials:[Partials.Message,Partials.Channel,Partials.Reaction],
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,     // privilegeret: slå til i Developer Portal
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,   // privilegeret: slå til i Developer Portal
     GatewayIntentBits.GuildVoiceStates,
   ],
@@ -40,6 +42,7 @@ client.once(Events.ClientReady, async (c) => {
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   require('./modules/staff-center').start(c);
+  require('./modules/testlab').start(c);
   giveaways.startTimer(c);
   require('./modules/prize-wheel').start(c);
   stream.startPolling(c);
@@ -54,6 +57,7 @@ client.on(Events.InteractionCreate, async (i) => {
     if(/^dev:(reply|replysubmit):/.test(i.customId||''))return await developer.onDirectReply(i,client);
     if((i.customId||'').startsWith('app:'))return await applications.onInteraction(i);
     if(!i.inGuild())return;
+    if((i.customId||'').startsWith('lab:'))return await require('./modules/testlab').interact(i);
     if((i.customId||'').startsWith('voice:'))return i.reply({content:'Midlertidige talerum er fjernet fra denne bot.',flags:MessageFlags.Ephemeral});
     if (i.isChatInputCommand()) {
       if (i.commandName === 'dashboard') return i.reply({ content: `🔧 Kontrolpanel: ${process.env.BASE_URL || 'http://localhost:3000'}`, flags: MessageFlags.Ephemeral });
@@ -78,6 +82,7 @@ client.on(Events.InteractionCreate, async (i) => {
     if (i.isRepliable()) (i.deferred || i.replied ? i.followUp(msg) : i.reply(msg)).catch(() => {});
   }
 });
+client.on(Events.MessageReactionAdd,(reaction,user)=>require('./modules/testlab').reaction(reaction,user).catch(e=>console.warn('[testpanel-starboard]',e.code||e.name)));
 
 client.on(Events.MessageCreate, async (m) => {
   if (!m.guild || m.author.bot) return;

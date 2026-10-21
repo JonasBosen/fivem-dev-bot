@@ -259,6 +259,15 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     };
   }));
 
+  // The laboratory is independent of existing module settings and is owner-managed.
+  const lab=require('../modules/testlab');
+  app.get('/api/guild/:gid/testlab',auth,ownerAccess,wrap(req=>lab.snapshot(req.guild)));
+  app.put('/api/guild/:gid/testlab/config',auth,ownerAccess,wrap(req=>lab.configure(req.guild,req.session.user.id,req.body)));
+  app.post('/api/guild/:gid/testlab/:module/preview',auth,ownerAccess,wrap(req=>lab.preview(req.guild,req.session.user.id,req.params.module,req.body)));
+  app.post('/api/guild/:gid/testlab/:module/execute',auth,ownerAccess,wrap(req=>lab.execute(req.guild,req.session.user.id,req.params.module,req.body,req.body.requestId)));
+  app.post('/api/guild/:gid/testlab/jobs/:id/cancel',auth,ownerAccess,wrap(req=>lab.cancelJob(req.guild,req.session.user.id,req.params.id)));
+  app.post('/api/guild/:gid/testlab/resources/:id/finish',auth,ownerAccess,wrap(req=>lab.finish(req.guild,req.session.user.id,req.params.id)));
+
   const protectDeveloperSettings=async(req,res,next)=>{
     if(!['/settings/developer','/panel/developer'].some(s=>req.path.endsWith(s)))return next();
     return devAccess(req,res,next);
