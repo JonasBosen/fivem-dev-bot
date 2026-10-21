@@ -9,10 +9,14 @@ const { embed, isAdmin, hasAnyRole } = require('../util');
 
 function createMusicService() {
 const EPH = { flags: MessageFlags.Ephemeral };
-let player;
+let player,botClient;
+const health=require('./music-health');
+function diagnostics(gid){const value=health.inspect(botClient,gid,queueOf(gid));return {...value,problem:health.problem(value)};}
 
 async function init(client) {
-  player = new Player(client);
+  botClient=client;player = new Player(client);
+  console.log('[musik-lyd] Afspiller klar',client.user?.id);
+  for(const event of ['playerFinish','emptyQueue','disconnect'])player.events.on(event,queue=>console.log('[musik-lyd]',event,JSON.stringify(diagnostics(queue.guild.id))));
   await player.extractors.loadMulti(DefaultExtractors);
   try { // YouTube-understøttelse
     const { YoutubeExtractor } = require('discord-player-youtubei');
@@ -21,6 +25,8 @@ async function init(client) {
   } catch (e) { console.warn('[musik] YouTube kunne ikke startes:',e.message); }
 
   player.events.on('playerStart', async (queue, track) => {
+    console.log('[musik-lyd] start',JSON.stringify(diagnostics(queue.guild.id)));
+    const check=setTimeout(()=>{if(queue.currentTrack!==track)return;const value=diagnostics(queue.guild.id);console.log('[musik-lyd] efter-5-sekunder',JSON.stringify(value));if(value.problem)queue.metadata?.channel?.send({content:'⚠️ '+value.problem,allowedMentions:{parse:[]}}).catch(()=>{});},5000);check.unref?.();
     const cfg = (await settings.get(queue.guild.id)).music;
     if (cfg.announceSongs && queue.metadata?.channel) {
       queue.metadata.channel.send({ embeds: [embed('🎶 Spiller nu', `[${track.title}](${track.url}) · ${track.author}\n⏱️ ${track.duration}`).setThumbnail(track.thumbnail || null)] }).catch(() => {});
@@ -43,6 +49,11 @@ async function canControl(member) {
 async function play(guild, voiceChannel, query, textChannel, requestedBy) {
   const cfg = (await settings.get(guild.id)).music;
   if (!cfg.enabled) throw new Error('Musik er slået fra på denne server.');
+  const me=guild.members.me||await guild.members.fetchMe();
+  const permissions=voiceChannel.permissionsFor(me);
+  const {PermissionFlagsBits:P}=require('discord.js');
+  if(!permissions?.has(P.Connect)||!permissions?.has(P.Speak))throw Error('Musikbotten mangler Tilslut eller Tal i den valgte talekanal.');
+  if(me.voice?.channelId===voiceChannel.id){const issue=health.problem(diagnostics(guild.id));if(issue&&/muted|taleret|mikrofon/.test(issue))throw Error(issue);}
   const { track, searchResult } = await player.play(voiceChannel, query, {
     requestedBy,
     nodeOptions: {
@@ -61,10 +72,11 @@ async function play(guild, voiceChannel, query, textChannel, requestedBy) {
 
 function state(guildId) {
   const q = queueOf(guildId);
-  if (!q || !q.currentTrack) return { playing: false, queue: [] };
+  if (!q || !q.currentTrack) return { playing: false, queue: [],diagnostics:diagnostics(guildId) };
   const t = q.currentTrack;
   return {
     playing: true,
+    diagnostics:diagnostics(guildId),
     paused: q.node.isPaused(),
     volume: q.node.volume,
     repeat: ['off', 'track', 'queue', 'autoplay'][q.repeatMode] || 'off',

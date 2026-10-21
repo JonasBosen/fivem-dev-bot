@@ -286,11 +286,12 @@ const pages = {
     async function refresh() {
       const s = await api(`/api/guild/${G.id}/music?bot=${encodeURIComponent(botSelect.value)}`).catch(() => null);
       if (!s) return;
-      if (!s.playing) return box.replaceChildren(h('h2', {}, 'Afspiller'), h('p', { class: 'muted' }, 'Der spilles ikke noget lige nu.'));
+      const audioHealth=s.diagnostics?h('p',{class:s.diagnostics.problem?'err':'muted'},s.diagnostics.problem||('Lydforbindelse: '+s.diagnostics.connection+' · Afspiller: '+s.diagnostics.audio+' · '+Math.round(s.diagnostics.audioMilliseconds/1000)+' sek. lyd')):null;
+      if (!s.playing) return box.replaceChildren(h('h2', {}, 'Afspiller'), h('p', { class: 'muted' }, 'Der spilles ikke noget lige nu.'),audioHealth);
       const vol = h('input', { type: 'range', min: 0, max: 150, value: s.volume, onchange: (e) => ctl('volume', e.target.value)() });
       const loop = h('select', { onchange: (e) => ctl('loop', e.target.value)() }, ['off', 'track', 'queue', 'autoplay'].map((m) => h('option', { value: m }, { off: 'Loop: fra', track: 'Loop: sang', queue: 'Loop: kø', autoplay: 'Autoplay' }[m])));
       loop.value = s.repeat;
-      box.replaceChildren(h('h2', {}, `Afspiller · ${s.voiceChannel || ''}`),
+      box.replaceChildren(audioHealth,h('h2', {}, `Afspiller · ${s.voiceChannel || ''}`),
         h('div', { class: 'np' }, h('img', { src: s.current.thumbnail || '', alt: '' }),
           h('div', { style: 'flex:1;min-width:220px' }, h('b', {}, s.current.title), h('div', { class: 'muted' }, `${s.current.author} · ${s.current.progress || '0:00'} / ${s.current.duration}`),
             h('div', { class: 'ctl' },
