@@ -318,7 +318,7 @@ const pages = {
           const r = await api(`/api/guild/${G.id}/music/play`, { method: 'POST', body: { query: q.value, voiceChannel: vc.value, textChannel: tc.value,bot:botSelect.value } });
           if(r.botId)botSelect.value=r.botId;toast(`Tilføjet: ${r.title}`); q.value = ''; refresh();
         }) }, '▶ Afspil'))),
-      settingsCard('music', 'Indstillinger'),await renderMusicFleetCard()];
+      h('div',{},settingsCard('music', 'Indstillinger'),renderMusicDiscordPanel()),await renderMusicFleetCard()];
   },
 
   async moderation() {

@@ -56,6 +56,7 @@ client.on(Events.InteractionCreate, async (i) => {
     if(/^dev:(reply|replysubmit):/.test(i.customId||''))return await developer.onDirectReply(i,client);
     if((i.customId||'').startsWith('app:'))return await applications.onInteraction(i);
     if(!i.inGuild())return;
+    if((i.customId||'').startsWith('musicpanel:'))return await require('./modules/music-panel').interact(i);
     if((i.customId||'').startsWith('voice:'))return i.reply({content:'Midlertidige talerum er fjernet fra denne bot.',flags:MessageFlags.Ephemeral});
     if (i.isChatInputCommand()) {
       if (i.commandName === 'dashboard') return i.reply({ content: `🔧 Kontrolpanel: ${process.env.BASE_URL || 'http://localhost:3000'}`, flags: MessageFlags.Ephemeral });

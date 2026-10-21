@@ -411,6 +411,7 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     const { track,botId } = await music.play(req.guild.id,vc.id,req.body.query,text?.id,null,req.body.bot||undefined);
     return { title: track.title,botId };
   }));
+  app.post('/api/guild/:gid/music/panel',auth,guildAccess,wrap(req=>require('../modules/music-panel').send(req.guild,req.body.channel)));
   app.post('/api/guild/:gid/music/:action', auth, guildAccess, wrap((req) => { music.control(req.guild.id,req.body.bot||undefined,req.params.action,req.body.value); }));
 
   // Levels og moderation
