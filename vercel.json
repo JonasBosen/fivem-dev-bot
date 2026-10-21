@@ -13,14 +13,5 @@
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
-  ],
-  "daemons": {
-    "discord-bot": {
-      "root": ".",
-      "entrypoint": "Dockerfile",
-      "instances": { "fra1": 1 },
-      "resources": { "requests": { "memory": "1Gi" } },
-      "terminationGracePeriodSeconds": 15
-    }
-  }
+  ]
 }
