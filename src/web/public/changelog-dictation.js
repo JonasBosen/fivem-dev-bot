@@ -15,7 +15,7 @@ function changelogDictation(field,options){
     if(!result.isFinal){interim+=text+' ';continue;}
     if(seen.has(i))continue;seen.add(i);if(!text)continue;
     const next=field.value+(field.value.trim()?'\n':'')+text;
-    if(next.length>60000){overflow.hidden=false;overflow.value+=(overflow.value?'\n':'')+text;status.textContent='Stikordsfeltet er fyldt. Ekstra tale står nedenfor og kan kopieres.';recognition.stop();}
+    if(next.length>60000){overflow.hidden=false;overflow.value+=(overflow.value?'\n':'')+text;status.textContent='Stikordsfeltet er fyldt. Ekstra tale står nedenfor og kan kopieres.';keepListening=false;recognition.stop();}
     else{field.value=next;options.change();}
    }
    if(overflow.hidden)status.textContent=interim?'Hører: '+interim:'Lytter… Tal på dansk. Tryk Stop når du er færdig.';
