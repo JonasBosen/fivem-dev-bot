@@ -14,13 +14,15 @@ const health=require('./music-health');
 function diagnostics(gid){const value=health.inspect(botClient,gid,queueOf(gid));return {...value,problem:health.problem(value)};}
 
 async function init(client) {
-  botClient=client;player = new Player(client,{skipFFmpeg:false,ffmpegPath:process.env.FFMPEG_PATH||require('ffmpeg-static')});
+  botClient=client;player = new Player(client);
   console.log('[musik-lyd] Afspiller klar',client.user?.id);
   for(const event of ['playerFinish','emptyQueue','disconnect'])player.events.on(event,queue=>console.log('[musik-lyd]',event,JSON.stringify(diagnostics(queue.guild.id))));
   await player.extractors.loadMulti(DefaultExtractors);
   try { // YouTube-understøttelse
     const { YoutubeExtractor } = require('discord-player-youtubei');
-    await player.extractors.register(YoutubeExtractor, {});
+    const extractor=await player.extractors.register(YoutubeExtractor, {});
+    const originalStream=extractor.stream.bind(extractor);
+    extractor.stream=async track=>require('./music-source').requireAudioStream(await originalStream(track));
     console.log('[musik] YouTube aktiveret');
   } catch (e) { console.warn('[musik] YouTube kunne ikke startes:',e.message); }
 
