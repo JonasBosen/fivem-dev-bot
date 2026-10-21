@@ -42,7 +42,6 @@ client.once(Events.ClientReady, async (c) => {
   c.user.setActivity('/play · /ticket · dashboard', { type: ActivityType.Listening });
   await register(c.user.id).catch((e) => console.error('[kommandoer]', e.message));
   require('./modules/staff-center').start(c);
-  require('./modules/testlab').start(c);
   giveaways.startTimer(c);
   require('./modules/prize-wheel').start(c);
   stream.startPolling(c);
@@ -57,7 +56,6 @@ client.on(Events.InteractionCreate, async (i) => {
     if(/^dev:(reply|replysubmit):/.test(i.customId||''))return await developer.onDirectReply(i,client);
     if((i.customId||'').startsWith('app:'))return await applications.onInteraction(i);
     if(!i.inGuild())return;
-    if((i.customId||'').startsWith('lab:'))return await require('./modules/testlab').interact(i);
     if((i.customId||'').startsWith('voice:'))return i.reply({content:'Midlertidige talerum er fjernet fra denne bot.',flags:MessageFlags.Ephemeral});
     if (i.isChatInputCommand()) {
       if (i.commandName === 'dashboard') return i.reply({ content: `🔧 Kontrolpanel: ${process.env.BASE_URL || 'http://localhost:3000'}`, flags: MessageFlags.Ephemeral });
@@ -82,10 +80,10 @@ client.on(Events.InteractionCreate, async (i) => {
     if (i.isRepliable()) (i.deferred || i.replied ? i.followUp(msg) : i.reply(msg)).catch(() => {});
   }
 });
-client.on(Events.MessageReactionAdd,(reaction,user)=>require('./modules/testlab').reaction(reaction,user).catch(e=>console.warn('[testpanel-starboard]',e.code||e.name)));
 
 client.on(Events.MessageCreate, async (m) => {
   if (!m.guild || m.author.bot) return;
+  if([8,9,10,11].includes(m.type)){await require('./modules/boosts').onMessage(m).catch(e=>console.warn('[server-boost]',e.code||e.message));return;}
   try {
     if (await moderation.automod(m)) return;
     if (await musicFleet.onMessage(m)) return;
@@ -118,3 +116,5 @@ client.on(Events.GuildMemberUpdate,(_,m)=>require('./modules/staff-center').onMe
 client.on(Events.GuildBanAdd,b=>require('./modules/staff-center').onBan(b).catch(e=>console.warn('[staff]',e.code||e.name)));
 client.on(Events.GuildBanRemove,b=>require('./modules/staff-center').onBan(b,true).catch(e=>console.warn('[staff]',e.code||e.name)));
 client.on(Events.GuildAuditLogEntryCreate,(e,g)=>require('./modules/staff-center').onAudit(e,g).catch(e=>console.warn('[staff]',e.code||e.name)));
+
+client.on(Events.GuildMemberUpdate,(oldMember,member)=>require('./modules/boosts').onMember(oldMember,member).catch(e=>console.warn('[server-boost]',e.code||e.message)));

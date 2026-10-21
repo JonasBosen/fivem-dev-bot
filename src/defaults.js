@@ -1,6 +1,7 @@
 // Standard-indstillinger for en ny server. Alt kan ændres i dashboardet.
 // Pladsholdere i beskeder: {user} {username} {server} {count} {level}
 const DEFAULTS = {
+  boosts:{enabled:false,channel:'',message:'💜 Tak for server boost, {user}! Tak fordi du støtter {server}!',title:'Tak for server boost',mediaId:'',imageUrl:'',color:'#f47fff'},
   txadmin: require('./modules/txadmin-config').defaults,
   birthdays:{enabled:false,channel:'',time:'08:00',message:'🎉 Tillykke med fødselsdagen {user}{age}! Hele {server} ønsker dig en fantastisk dag! 🎂',birthdayRole:'',birthdayPingRole:'986064085101715486',showAge:false,mentionMember:true,mediaId:'',imageUrl:'',color:'#e879f9',members:{}},
   slideshow:{uploadsLocked:false,uploadRoles:['928743353770709093'],enabled:false,channel:'',title:'Dream Network · Highlights',interval:30,color:'#5865f2',slides:[],state:null},

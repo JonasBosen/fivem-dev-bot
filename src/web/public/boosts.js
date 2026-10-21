@@ -1,0 +1,7 @@
+async function renderBoosts(){
+ const draft=structuredClone(G.settings.boosts),root=h('div',{class:'card module-studio'}),preview=h('div',{class:'discord-message-preview'});
+ function draw(){preview.style.borderLeft='4px solid '+draft.color;preview.replaceChildren(h('b',{},draft.title||'Tak for server boost'),h('p',{style:'white-space:pre-wrap'},(draft.message||'').replaceAll('{user}','@Booster').replaceAll('{username}','Booster').replaceAll('{server}',G.name)));}
+ const picker=await mediaPicker(draft,draw,'boosts');
+ root.append(h('h2',{},'💜 Tak for server boost'),h('p',{class:'muted'},'Send automatisk en personlig tak i den valgte Discord-tekstkanal, når et medlem begynder at booste serveren. Medlemmet tagges i beskeden.'),h('div',{class:'grid'},field({k:'enabled',t:'toggle',l:'Aktivér automatisk boost-tak'},draft),field({k:'channel',t:'channel',l:'Tekstkanal til boost-tak'},draft),field({k:'title',l:'Overskrift'},draft),field({k:'message',t:'textarea',l:'Din takketekst · {user} {username} {server}'},draft)),h('label',{class:'f'},'Farve',h('input',{type:'color',value:draft.color,oninput:e=>{draft.color=e.target.value;draw();}})),picker,h('h3',{},'Forhåndsvisning af tekst'),preview,h('button',{class:'btn',onclick:run(async()=>{G.settings.boosts=await api('/api/guild/'+G.id+'/settings/boosts',{method:'PUT',body:draft});toast('Indstillinger for server boost er gemt');})},'Gem boost-tak'));
+ root.addEventListener('input',draw);draw();return root;
+}

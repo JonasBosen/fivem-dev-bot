@@ -259,21 +259,14 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     };
   }));
 
-  // The laboratory is independent of existing module settings and is owner-managed.
-  const lab=require('../modules/testlab');
-  app.get('/api/guild/:gid/testlab',auth,ownerAccess,wrap(req=>lab.snapshot(req.guild)));
-  app.put('/api/guild/:gid/testlab/config',auth,ownerAccess,wrap(req=>lab.configure(req.guild,req.session.user.id,req.body)));
-  app.post('/api/guild/:gid/testlab/:module/preview',auth,ownerAccess,wrap(req=>lab.preview(req.guild,req.session.user.id,req.params.module,req.body)));
-  app.post('/api/guild/:gid/testlab/:module/execute',auth,ownerAccess,wrap(req=>lab.execute(req.guild,req.session.user.id,req.params.module,req.body,req.body.requestId)));
-  app.post('/api/guild/:gid/testlab/jobs/:id/cancel',auth,ownerAccess,wrap(req=>lab.cancelJob(req.guild,req.session.user.id,req.params.id)));
-  app.post('/api/guild/:gid/testlab/resources/:id/finish',auth,ownerAccess,wrap(req=>lab.finish(req.guild,req.session.user.id,req.params.id)));
-
+  app.use('/api/guild/:gid/testlab',auth,(req,res)=>res.status(410).json({error:'Testpanelet er fjernet'}));
   const protectDeveloperSettings=async(req,res,next)=>{
     if(!['/settings/developer','/panel/developer'].some(s=>req.path.endsWith(s)))return next();
     return devAccess(req,res,next);
   };
   app.put('/api/guild/:gid/settings/:module', auth, guildAccess, protectDeveloperSettings, wrap(async (req,res) => {
     if(['restart','levels','txadmin'].includes(req.params.module))return res.status(404).json({error:'Modulet er fjernet fra panelet'});
+    if(req.params.module==='boosts')return require('../modules/boosts').configure(req.guild,req.body);
     if(['birthdays','slideshow'].includes(req.params.module)){const result=await require('../modules/community-studios').configure(req.guild,req.params.module,req.body);if(req.params.module==='slideshow')await require('../modules/community-studios').refreshSlideshow(req.guild);return result;}
     if(req.params.module==='appearance'){const value=require('../modules/appearance').validate(req.body);await settings.setModule(appearanceKey(req),'appearance',value);return value;}
     if(req.params.module==='welcome')req.body=require('../modules/panel-media').validate(req.body);

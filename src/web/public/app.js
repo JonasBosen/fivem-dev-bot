@@ -220,11 +220,11 @@ const PAGES = [
   ['staff','🛡️','Staff-panel'],
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
   ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
-  ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],['testlab','🧪','Testpanelet'],
+  ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],['boosts','💜','Tak for server boost'],
 ];
 
 const pages = {
-  async testlab(){return renderTestlab();},
+  async boosts(){return renderBoosts();},
   async staff(){return renderStaffCenter();},
   async account(){return renderMyAccess();},
   async ['developer-wishes'](){return renderDeveloperWorkspace(true);},
@@ -381,6 +381,7 @@ async function route() {
   clearInterval(pollTimer);
   if(!me?.access?.unlocked)return renderPersonalAccess();
   const [, , gid, page = 'overview'] = location.hash.split('/');
+  if(page==='testlab'){location.hash='#/g/'+gid+'/boosts';return;}
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&['restart','levels','txadmin','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
@@ -393,7 +394,7 @@ async function route() {
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
-    orderedPages().filter(p=>(!G.developerOnly||['developer','account','appearance'].includes(p[0]))&&(p[0]!=='testlab'||me.access.owner)&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${(k === page||k==='developer'&&page==='developer-wishes') ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
+    orderedPages().filter(p=>(!G.developerOnly||['developer','account','appearance'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${(k === page||k==='developer'&&page==='developer-wishes') ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
     h('div', { class: 'foot' }, h('a', { href: '#/g/'+gid+'/account' }, 'Min adgang'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
   const main = h('main', {}, h('div', { class: 'top' },
     h('button', { class: 'btn sec menu-btn', onclick: () => side.classList.toggle('open') }, '☰'),
@@ -401,7 +402,7 @@ async function route() {
   $app.replaceChildren(h('div', { class: 'shell' }, side, main));
   try {
     const content = await (pages[page] || pages.overview)();
-    main.lastChild.replaceWith(['developer','developer-wishes','stream','appearance','logs','applications','temporaryVoice','custom','restart','account','testlab'].includes(page)?h('div',{},content):categorySections(page,content));
+    main.lastChild.replaceWith(['developer','developer-wishes','stream','appearance','logs','applications','temporaryVoice','custom','restart','account','boosts'].includes(page)?h('div',{},content):categorySections(page,content));
   } catch (e) { main.lastChild.replaceWith(h('div', { class: 'card' }, `Fejl: ${e.message}`)); }
 }
 
