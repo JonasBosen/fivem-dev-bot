@@ -14,7 +14,7 @@ const health=require('./music-health');
 function diagnostics(gid){const value=health.inspect(botClient,gid,queueOf(gid));return {...value,problem:health.problem(value)};}
 
 async function init(client) {
-  botClient=client;player = new Player(client);
+  botClient=client;player = new Player(client,{skipFFmpeg:false,ffmpegPath:process.env.FFMPEG_PATH||require('ffmpeg-static')});
   console.log('[musik-lyd] Afspiller klar',client.user?.id);
   for(const event of ['playerFinish','emptyQueue','disconnect'])player.events.on(event,queue=>console.log('[musik-lyd]',event,JSON.stringify(diagnostics(queue.guild.id))));
   await player.extractors.loadMulti(DefaultExtractors);
