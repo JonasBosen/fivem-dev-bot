@@ -22,3 +22,16 @@ test('boost thanks validates destinations, sends customized image and mentions o
  await assert.rejects(boosts.configure(guild,{...cfg,mediaId:'foreign'}),/bibliotek/);
  }finally{await db.close();}
 });
+
+test('boost demo uses unsaved settings and tags the caller while automation is disabled without changing saved settings',async()=>{
+ await initDb();try{
+ const {settings}=require('../src/db'),sent=[],gid='boost-demo',uid='123456789012345678';
+ const member={id:uid,user:{username:'DemoJonas'},guild:null};
+ const channel={id:'123456789012345679',type:0,permissionsFor:()=>({has:()=>true}),send:async p=>{sent.push(p);return {id:'demo-message'};}};
+ const guild={id:gid,name:'Dream Network',members:{me:{id:'bot'},fetch:async id=>{assert.equal(id,uid);return member;}},channels:{fetch:async id=>{assert.equal(id,channel.id);return channel;}}};member.guild=guild;
+ const saved=await settings.get(gid),cfg={...saved.boosts,enabled:false,channel:channel.id,message:'Demo til {user} på {server}',title:'Min demo',imageUrl:'https://example.com/demo.png'};
+ const result=await boosts.testBoost(guild,uid,cfg);assert.equal(result.ok,true);assert.equal(sent.length,1);assert.deepEqual(sent[0].allowedMentions,{parse:[],users:[uid]});assert.equal(sent[0].content,'<@'+uid+'>');assert.equal(sent[0].embeds[0].data.title,'Min demo');assert.equal(sent[0].embeds[0].data.image.url,cfg.imageUrl);assert.match(sent[0].embeds[0].data.footer.text,/DEMO/);assert.match(sent[0].embeds[0].data.description,/Dream Network/);
+ assert.deepEqual((await settings.get(gid)).boosts,saved.boosts);
+ await assert.rejects(boosts.testBoost(guild,uid,{...cfg,mediaId:'other-guild'}),/bibliotek/);assert.equal(sent.length,1);
+ }finally{await db.close();}
+});
