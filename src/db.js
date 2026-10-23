@@ -6,7 +6,7 @@ const { SQLITE_SCHEMA, POSTGRES_SCHEMA } = require('./schema');
 function postgresSql(sql) {
   let position = 0;
   return sql.replace(/\?/g, () => `$${++position}`)
-    .replace(/\b(FROM|INTO|UPDATE|JOIN)\s+(wheel_spins|member_events|panel_users|panel_invites|dev_registry|dev_presence|panel_media|settings|tickets|applications|levels|warnings|giveaways|stream_state|dev_gate|dev_gate_attempts|site_audit|stream_accounts|dev_tasks|dev_history|dev_images|dev_comments|dev_files|dev_audit|dev_deleted|dev_planning)\b/gi, '$1 allbot.$2')
+    .replace(/\b(FROM|INTO|UPDATE|JOIN)\s+(wheel_spins|member_events|panel_users|panel_invites|dev_registry|dev_presence|panel_media|settings|tickets|applications|levels|warnings|giveaways|host_requests|host_sessions|query_templates|stream_state|dev_gate|dev_gate_attempts|site_audit|stream_accounts|dev_tasks|dev_history|dev_images|dev_comments|dev_files|dev_audit|dev_deleted|dev_planning)\b/gi, '$1 allbot.$2')
     .replace(/SET xp = xp \+/g, 'SET xp = levels.xp +');
 }
 function createPostgresAdapter(connection) {
@@ -32,10 +32,7 @@ function createPostgresAdapter(connection) {
 let adapter;const settingsReads=new Map();
 async function initDb() {
   if (adapter) return;
-  if (process.env.DATABASE_URL && !(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)) {
-    const project = process.env.SUPABASE_PROJECT_REF || 'kdxxtdiydepuiecpdpha';
-    const connectionUrl = new URL(process.env.DATABASE_URL);
-    if (!(connectionUrl.hostname === 'db.' + project + '.supabase.co' || (connectionUrl.hostname.endsWith('.pooler.supabase.com') && decodeURIComponent(connectionUrl.username) === 'postgres.' + project))) throw new Error('DATABASE_URL skal pege på det fælles Supabase-projekt ' + project);
+  if (process.env.DATABASE_URL) {
     const { Pool, types } = require('pg');
     types.setTypeParser(20, (value) => Number(value));
     const pool = new Pool({
@@ -52,7 +49,7 @@ async function initDb() {
     const candidate = createSupabaseAdapter(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_KEY);
     await candidate.init(); adapter = candidate;
   } else {
-    if (process.env.RENDER || process.env.NODE_ENV === 'production') throw new Error('DATABASE_URL mangler. Tilføj AllBots Supabase-forbindelse under Environment.');
+    if (process.env.RENDER || process.env.NODE_ENV === 'production') throw new Error('DATABASE_URL mangler. Tilføj PostgreSQL-forbindelsen under Environment.');
     const { DatabaseSync } = require('node:sqlite');
     const file = process.env.DB_FILE || path.join(__dirname, '..', 'data', 'bot.db');
     fs.mkdirSync(path.dirname(file), { recursive: true });
