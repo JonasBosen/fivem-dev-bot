@@ -215,7 +215,39 @@ const PAGES = [
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],['boosts','💜','Tak for server boost'],
 ];
 
+const BOT_PAGES = ['welcome', 'tickets', 'applications', 'music', 'moderation', 'stream', 'giveaways', 'custom', 'birthdays', 'slideshow', 'boosts'];
+PAGES.push(['music', '🎵', 'Musik']);
+function sidebarPages(gid, page) {
+  const link = ([key, emoji, label]) => h('a', {
+    class: `nav${(key === page || key === 'developer' && page === 'developer-wishes') ? ' on' : ''}`,
+    href: `#/g/${gid}/${key}`, 'aria-current': key === page ? 'page' : null,
+  }, emoji, ' ', label);
+  const items = orderedPages().filter(p => !BOT_PAGES.includes(p[0]) &&
+    (!G.developerOnly || ['developer', 'account', 'appearance'].includes(p[0])) &&
+    (p[0] !== 'developer' || me.access.developer));
+  const links = items.map(link);
+  if (!G.developerOnly) {
+    const group = h('details', {class: 'bots-nav', open: BOT_PAGES.includes(page)},
+      h('summary', {}, '🤖 Bots'),
+      h('div', {class: 'bots-nav-items'}, BOT_PAGES.map(key => link(PAGES.find(p => p[0] === key)))));
+    const developer = items.findIndex(p => p[0] === 'developer');
+    links.splice(developer < 0 ? 1 : developer + 1, 0, group);
+  }
+  return links;
+}
+
 const pages = {
+  async music() {
+    const channel = h('select', {}, optionList(G.channels, '# ', '— vælg kanal —'));
+    return [h('div', {class: 'card'}, h('h2', {}, '🎵 Musik'),
+      h('p', {class: 'muted'}, 'Send musikpanelet til Discord. Medlemmer kan tilføje sange og styre musikken fra deres talekanal.'),
+      h('label', {class: 'f'}, 'Kanal til musikpanelet', channel),
+      h('button', {class: 'btn', onclick: run(async () => {
+        if (!channel.value) throw new Error('Vælg en kanal');
+        await api(`/api/guild/${G.id}/music/panel`, {method: 'POST', body: {channel: channel.value}});
+        toast('Musikpanelet er sendt til Discord');
+      })}, 'Send musikpanel'))];
+  },
   async boosts(){return renderBoosts();},
   async staff(){return renderStaffCenter();},
   async account(){return renderMyAccess();},
@@ -331,7 +363,7 @@ async function route() {
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(page==='testlab'){location.hash='#/g/'+gid+'/boosts';return;}
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&['music','restart','levels','txadmin','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['restart','levels','txadmin','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
@@ -342,7 +374,7 @@ async function route() {
   applyAppearance(G.settings.appearance);
   const side = h('nav', { class: 'side' },
     h('div', { class: 'guild' }, icon(G), h('div', {}, h('b', {}, G.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${G.members} medlemmer`))),
-    orderedPages().filter(p=>(!G.developerOnly||['developer','account','appearance'].includes(p[0]))&&(p[0]!=='developer'||me.access.developer)).map(([k, ic, l]) => h('a', { class: `nav${(k === page||k==='developer'&&page==='developer-wishes') ? ' on' : ''}`, href: `#/g/${gid}/${k}` }, ic, ' ', l)),
+    sidebarPages(gid, page),
     h('div', { class: 'foot' }, h('a', { href: '#/g/'+gid+'/account' }, 'Min adgang'), h('br'), h('a', { href: '/logout', class: 'muted' }, 'Log ud')));
   const main = h('main', {}, h('div', { class: 'top' },
     h('button', { class: 'btn sec menu-btn', onclick: () => side.classList.toggle('open') }, '☰'),
@@ -385,3 +417,4 @@ async function route() {
   await route();
  }catch(error){$app.replaceChildren(h('div',{class:'center'},h('div',{class:'card'},h('h1',{},'Panelet kunne ikke indlæses'),h('p',{},error.name==='TimeoutError'?'Serveren svarede ikke i tide. Prøv igen om lidt.':error.message),h('button',{class:'btn',onclick:()=>location.reload()},'Prøv igen'))));}
 })();
+
