@@ -131,14 +131,6 @@ const SCHEMA = {
         {k:'enabled',t:'toggle',l:'Åben for ansøgninger'},{k:'buttonLabel',l:'Egen knaptekst (valgfri)'},{k:'emoji',l:'Emoji'},{k:'color',t:'select',l:'Knapfarve',options:{blue:'Blå',green:'Grøn',red:'Rød',gray:'Grå'}},{k:'requiredRole',t:'role',l:'Krævet rolle for at ansøge'},{k:'minAccountAgeDays',t:'number',min:0,l:'Minimumsalder på Discord-konto (dage)'},{k:'reviewChannel',t:'channel',l:'Egen behandlingskanal (valgfri)'},{k:'removeRole',t:'role',l:'Fjern rolle ved accept'},{k:'denyRole',t:'role',l:'Tildel rolle ved afvisning'},{k:'acceptMessage',t:'textarea',l:'Privat svar ved accept (tom = standard)'},{k:'denyMessage',t:'textarea',l:'Privat svar ved afvisning (tom = standard)'},{ k: 'questions', t: 'list', l: 'Spørgsmål (maks 5)' }] },
   ],
   giveaways: [{ k: 'managerRole', t: 'role', l: 'Rolle der må styre giveaways' }],
-  music: [
-    { k: 'enabled', t: 'toggle', l: 'Musik slået til' },
-    { k: 'announceSongs', t: 'toggle', l: 'Annoncér ny sang i chatten' },
-    { k: 'leaveOnEmpty', t: 'toggle', l: 'Forlad tom talekanal' },
-    { k: 'djRole', t: 'role', l: 'DJ-rolle (tom = alle må)' },
-    { k: 'defaultVolume', t: 'number', l: 'Standard-lydstyrke (%)', min: 0, max: 150 },
-    { k: 'maxQueue', t: 'number', l: 'Maks sange i køen', min: 1 },
-  ],
   moderation: [
     { k: 'enabled', t: 'toggle', l: 'Automod slået til' },
     { k: 'antiSpam', t: 'toggle', l: 'Anti-spam (auto-timeout)' },
@@ -219,7 +211,7 @@ function diagnosticsCard(){const results=h('div'),button=h('button',{class:'btn 
 const PAGES = [
   ['staff','🛡️','Staff-panel'],
   ['developer', '🛠️', 'Udvikler & fejlmeldinger'], ['overview', '📊', 'Oversigt'], ['tickets', '🎫', 'Supportsager'], ['applications', '📝', 'Ansøgninger'],
-  ['music', '🎵', 'Musik'], ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
+  ['moderation', '🛡️', 'Moderation'], ['welcome', '👋', 'Velkomst & verificering'],
   ['giveaways', '🎉', 'Præmielodtrækninger'], ['stream', '🔴', 'Streambeskeder'], ['birthdays','🎂','Fødselsdage'], ['slideshow','🖼️','Highlights / diasshow'], ['custom', '💬', 'Kommandoer'], ['appearance','🎨','Indstillinger for siden'],['account','🔑','Min adgang'],['boosts','💜','Tak for server boost'],
 ];
 
@@ -243,7 +235,6 @@ const pages = {
           h('li', {}, 'Tickets: vælg support-roller og log-kanal, og send panelet.'),
           h('li', {}, 'Ansøgninger: vælg review-kanal, ret spørgsmålene og send panelet.'),
           h('li', {}, 'Velkomst & verificering: slå til og vælg kanal/rolle.'),
-          h('li', {}, 'Musik: brug /play i Discord eller styr afspilleren her fra panelet.'),
           h('li', {}, 'Stream-alerts: tilføj Twitch-navne og YouTube-kanaler.'))),
       settingsCard('general', 'Generelt'),
       renderMembersPanel(),
@@ -276,50 +267,6 @@ const pages = {
   },
 
   async applications() { return renderAdvancedApplications(); },
-
-  async music() {
-    const botSelect=h('select',{},h('option',{value:''},'Automatisk: brug en ledig musikbot'));
-    const fleetBox=h('div',{class:'card'});
-    let bots=[];
-    const box = h('div', { class: 'card' }, h('p', { class: 'muted' }, 'Henter…'));
-    const ctl = (a, v) => run(async () => { await api(`/api/guild/${G.id}/music/${a}`, { method: 'POST', body: { value: v,bot:botSelect.value } }); refresh(); });
-    async function refresh() {
-      const s = await api(`/api/guild/${G.id}/music?bot=${encodeURIComponent(botSelect.value)}`).catch(() => null);
-      if (!s) return;
-      const audioHealth=s.diagnostics?h('p',{class:s.diagnostics.problem?'err':'muted'},s.diagnostics.problem||('Lydforbindelse: '+s.diagnostics.connection+' · Afspiller: '+s.diagnostics.audio+' · '+Math.round(s.diagnostics.audioMilliseconds/1000)+' sek. lyd')):null;
-      if (!s.playing) return box.replaceChildren(h('h2', {}, 'Afspiller'), h('p', { class: 'muted' }, 'Der spilles ikke noget lige nu.'),audioHealth);
-      const vol = h('input', { type: 'range', min: 0, max: 150, value: s.volume, onchange: (e) => ctl('volume', e.target.value)() });
-      const loop = h('select', { onchange: (e) => ctl('loop', e.target.value)() }, ['off', 'track', 'queue', 'autoplay'].map((m) => h('option', { value: m }, { off: 'Loop: fra', track: 'Loop: sang', queue: 'Loop: kø', autoplay: 'Autoplay' }[m])));
-      loop.value = s.repeat;
-      box.replaceChildren(audioHealth,h('h2', {}, `Afspiller · ${s.voiceChannel || ''}`),
-        h('div', { class: 'np' }, h('img', { src: s.current.thumbnail || '', alt: '' }),
-          h('div', { style: 'flex:1;min-width:220px' }, h('b', {}, s.current.title), h('div', { class: 'muted' }, `${s.current.author} · ${s.current.progress || '0:00'} / ${s.current.duration}`),
-            h('div', { class: 'ctl' },
-              h('button', { class: 'btn sec', onclick: ctl(s.paused ? 'resume' : 'pause') }, s.paused ? '▶ Fortsæt' : '⏸ Pause'),
-              h('button', { class: 'btn sec', onclick: ctl('skip') }, '⏭ Skip'),
-              h('button', { class: 'btn sec', onclick: ctl('shuffle') }, '🔀 Bland'),
-              h('button', { class: 'btn bad', onclick: ctl('stop') }, '⏹ Stop'), loop),
-            h('label', { class: 'f', style: 'margin-top:10px' }, h('span', {}, `Lydstyrke (${s.volume}%)`), vol))),
-        h('h3', { style: 'margin-top:18px' }, `Kø (${s.queue.length})`),
-        h('table', { class: 'table' }, h('tbody', {}, s.queue.map((t, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, t.title, h('div', { class: 'muted' }, t.author)), h('td', {}, t.duration),
-          h('td', {}, h('button', { class: 'btn sec sm', onclick: ctl('remove', i) }, 'Fjern')))))));
-    }
-    async function refreshFleet(){bots=await api(`/api/guild/${G.id}/music/bots`);const previous=botSelect.value;botSelect.replaceChildren(h('option',{value:''},'Automatisk: brug en ledig musikbot'),...bots.map(b=>h('option',{value:b.id},b.name+(b.channelId?' · optaget':' · ledig'))));botSelect.value=previous;}
-    botSelect.addEventListener('change',()=>refresh());
-    await refreshFleet();
-    refresh();
-    pollTimer = setInterval(()=>{refresh();refreshFleet().catch(()=>{});},5000);
-    const q = h('input', { placeholder: 'Sangnavn, YouTube- eller Spotify-link' });
-    const vc = h('select', {}, optionList(G.voiceChannels, '🔊 ', '— talekanal —'));
-    const tc = h('select', {}, optionList(G.channels, '# ', '— annoncér i kanal (valgfri) —'));
-    return [box,
-      h('div', { class: 'card' }, h('h2', {}, 'Afspil fra panelet'), h('div', { class: 'grid' }, q, vc, tc,botSelect),
-        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: run(async () => {
-          const r = await api(`/api/guild/${G.id}/music/play`, { method: 'POST', body: { query: q.value, voiceChannel: vc.value, textChannel: tc.value,bot:botSelect.value } });
-          if(r.botId)botSelect.value=r.botId;toast(`Tilføjet: ${r.title}`); q.value = ''; refresh();
-        }) }, '▶ Afspil'))),
-      h('div',{},settingsCard('music', 'Indstillinger'),renderMusicDiscordPanel()),await renderMusicFleetCard()];
-  },
 
   async moderation() {
     const list = await api(`/api/guild/${G.id}/warnings`);
@@ -384,7 +331,7 @@ async function route() {
   const [, , gid, page = 'overview'] = location.hash.split('/');
   if(page==='testlab'){location.hash='#/g/'+gid+'/boosts';return;}
   if(gid&&['developer','developer-wishes'].includes(page)&&!me.access.developer){location.hash='#/g/'+gid+'/overview';return;}
-  if(gid&&['restart','levels','txadmin','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
+  if(gid&&['music','restart','levels','txadmin','temporaryVoice'].includes(page)){location.hash='#/g/'+gid+'/overview';return;}
   if(gid&&page==='logs'){panelTabSet('section:'+gid+'-developer','logs');location.hash='#/g/'+gid+'/developer';return;}
   if (!gid||gid!==me.targetGuildId) return renderGuildList();
   try {
@@ -427,7 +374,7 @@ async function route() {
   if (r.status === 401) {
     $app.replaceChildren(h('div', { class: 'center' }, h('div', {},
       h('h1', { style: 'font-size:30px' }, 'Alle bots samlet'),
-      h('p', { class: 'muted' }, 'Supportsager, musik, moderation, ansøgninger, præmielodtrækninger og streambeskeder – ét sted.'),
+      h('p', { class: 'muted' }, 'Supportsager, moderation, ansøgninger, præmielodtrækninger og streambeskeder – ét sted.'),
       h('a', { class: 'btn', href: '/login' }, 'Log ind med Discord'))));
     return;
   }
