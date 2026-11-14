@@ -4,7 +4,7 @@ const key=gid=>'application-panels:'+gid;
 function initial(cfg,channels=[]){
   const allow=cfg.forms.filter(f=>/allow(?:ed)?\s*list/i.test(f.name));
   const common=cfg.forms.filter(f=>!allow.includes(f));
-  const panels=[{id:'general',name:'Øvrige ansøgninger',panelTitle:cfg.panelTitle,panelText:cfg.panelText,color:cfg.color,footer:cfg.footer,mediaId:cfg.mediaId||'',imageUrl:cfg.imageUrl||'',forms:common.map(f=>f.id),channel:channels.find(c=>/ansøgninger/i.test(c.name))?.id||''}];
+  const panels=[{id:'general',name:'Øvrige ansøgninger',panelTitle:cfg.panelTitle,panelText:cfg.panelText,color:cfg.color,footer:cfg.footer,mediaId:cfg.mediaId||'',imageUrl:cfg.imageUrl||'',forms:common.map(f=>f.id),channel:channels.find(c=>/^[^\p{L}\p{N}]*ansøgninger[^\p{L}\p{N}]*$/iu.test(c.name))?.id||''}];
   for(const form of allow)panels.push({id:'allowlist-'+form.id,name:form.name,panelTitle:'Skriftlig Allowlist',panelText:'Ansøg om allowlist til Dream Network. Tryk på knappen nedenfor for at starte din skriftlige ansøgning.',color:cfg.color,footer:'',mediaId:'',imageUrl:'',forms:[form.id],channel:channels.find(c=>/skriftlig.*ansøgning/i.test(c.name))?.id||''});
   return panels;
 }
