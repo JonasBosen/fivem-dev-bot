@@ -23,8 +23,13 @@ const lease = () => state.write(leaseKey, (value) => {
 async function main() {
   if (!process.env.DISCORD_TOKEN) throw Error('DISCORD_TOKEN mangler');
   await initDb();
+  let lastWaitLog=0;
   while (!stopping) {
-    try { await lease(); break; } catch (error) { if (error.message !== 'LEADER_BUSY') throw error; await wait(3000); }
+    try { await lease(); break; } catch (error) {
+      if (error.message !== 'LEADER_BUSY') throw error;
+      if(Date.now()-lastWaitLog>30000){const held=await state.read(leaseKey);console.info('[daemon] Venter på botlås',JSON.stringify({service,preferredService:held.preferredService,holderService:held.service,holderInstance:held.instance,expiresAt:held.until,now:Date.now()}));lastWaitLog=Date.now();}
+      await wait(3000);
+    }
   }
   if (stopping) throw Error('DAEMON_STOPPING');
   console.log('[daemon] Botlåsen er overtaget af',process.env.RENDER_INSTANCE_ID||process.env.RENDER_SERVICE_ID||'daemon');
