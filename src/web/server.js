@@ -280,6 +280,10 @@ function startWeb(client, { databaseReady = true, databaseError = '', listen = t
     return result[req.params.module];
   }));
 
+  app.get('/api/guild/:gid/application-panels',auth,guildAccess,wrap(req=>require('../modules/application-panels').list(req.guild)));
+  app.put('/api/guild/:gid/application-panels/:id',auth,guildAccess,wrap(req=>require('../modules/application-panels').save(req.guild,{...req.body,id:req.params.id})));
+  app.post('/api/guild/:gid/application-panels/:id/send',auth,guildAccess,wrap(req=>require('../modules/application-panels').send(req.guild,req.params.id)));
+
   app.post('/api/guild/:gid/panel/:type', auth, guildAccess, protectDeveloperSettings, wrap(async (req) => {
     const fn = { developer: developer.sendPanel, tickets: tickets.sendPanel, applications: applications.sendPanel, verification: community.sendVerifyPanel }[req.params.type];
     if (!fn) throw new Error('Ukendt panel');
